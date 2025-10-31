@@ -45,10 +45,10 @@ export class AuthService {
   ) {
     this.loadFromStorage();
   }
-  private base = environment.API_URL;
+
   // ---------- Auth actions ----------
   login(credentials: LoginRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.base}/login`, credentials).pipe(
+    return this.http.post<AuthResponse>(`${this.API_URL}/login`, credentials).pipe(
       tap(res => this.saveAuth(res))
     );
   }
