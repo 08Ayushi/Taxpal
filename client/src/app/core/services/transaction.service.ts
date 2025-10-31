@@ -65,10 +65,7 @@ interface TransactionResponseDTO extends Omit<TransactionResponse, 'transactions
 
 @Injectable({ providedIn: 'root' })
 export class TransactionService {
-  private readonly BASE =
-    (environment as any)?.API_URL && typeof (environment as any).API_URL === 'string'
-      ? (environment as any).API_URL
-      : '/api/v1';
+  private readonly BASE = '/api/v1';
 
   private readonly API = `${this.BASE}/transactions`;
 
