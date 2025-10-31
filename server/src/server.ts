@@ -4,9 +4,9 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 
 const candidates = [
-  path.resolve(process.cwd(), '.env'),
   path.resolve(__dirname, '../.env'),
   path.resolve(__dirname, '../../.env'),
+  path.resolve(process.cwd(), '.env'),
 ];
 
 let loaded = false;
@@ -22,7 +22,6 @@ if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 
 // ---------- 2) Imports that rely on env ----------
 import express from 'express';
-import cors from 'cors';
 import mongoose from 'mongoose';
 
 // (optional) mailer verification if you use it
@@ -54,13 +53,24 @@ const PORT = Number(process.env.PORT || 3000);
 app.disable('x-powered-by');
 
 // ---------- 4) CORS ----------
-const corsOrigins =
-  process.env.CORS_ORIGIN?.split(',').map(s => s.trim()) || [
-    'http://localhost:4200',
-    'http://127.0.0.1:4200',
-  ];
+// ---------- 4) CORS ----------
+import cors from 'cors';
 
-app.use(cors({ origin: corsOrigins, credentials: true }));
+const explicit = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);                 // Postman/curl
+    if (explicit.includes(origin)) return cb(null, true);
+    if (origin.endsWith('.vercel.app')) return cb(null, true); // allow Vercel previews
+    return cb(null, false); // silently deny instead of error
+  },
+  credentials: true,
+}));
+
 
 // ---------- 5) Core middleware ----------
 app.use(express.json());
