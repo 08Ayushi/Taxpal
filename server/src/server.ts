@@ -89,6 +89,9 @@ mongoose
   .catch(err => console.error('[db] connection error:', err));
 
 // ---------- 7) Routes ----------
+app.get('/', (req, res) => {
+  res.send('✅ TaxPal backend is running successfully!');
+});
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/incomes', incomeRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
