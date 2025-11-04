@@ -8,7 +8,7 @@ import {
   resetValidator,
 } from '../../utils/validators/authValidators';
 import { handleValidation } from '../../utils/validation';
-import { sendResetEmail } from '../../utils/mailer';
+import { sendResetEmailAsync } from '../../utils/mailer';
 
 const router = express.Router();
 console.log('[auth routes] loaded');
@@ -94,23 +94,19 @@ router.post(
   async (req: Request, res: Response) => {
     const { email } = req.body;
     const result = await authService.issueResetToken(email);
-
+    
     // Always respond generically
     if (!result) return res.json({ message: 'If that email exists, we sent a reset link.' });
-
+    
     const { resetToken } = result;
-    const resetUrl = `${
-      process.env.CLIENT_URL || 'http://localhost:4200'
-    }/reset-password?token=${resetToken}`;
+    const resetUrl = `${(process.env.CLIENT_URL || 'http://localhost:4200')}/reset-password?token=${resetToken}`;
     console.log('[reset-url]', resetUrl);
-
-    try {
-      await sendResetEmail(email, resetUrl);
-    } catch (e) {
-      console.warn('[mailer] failed to send email in dev:', (e as any)?.message || e);
-    }
-
-    res.json({ message: 'If that email exists, we sent a reset link.' });
+    
+    // fire-and-forget; do NOT await (prevents 502 on hosts that block SMTP)
+    sendResetEmailAsync(email, resetUrl);
+    
+    // immediately return OK (no user enumeration)
+    return res.json({ message: 'If that email exists, we sent a reset link.' });
   }
 );
 
