@@ -23,6 +23,7 @@ if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 // ---------- 2) Imports that rely on env ----------
 import express from 'express';
 import mongoose from 'mongoose';
+import cors from 'cors';
 
 // (optional) mailer verification if you use it
 import { verifyMailer } from './utils/mailer';
@@ -48,29 +49,41 @@ import exportRoutes from './api/ExportDownload/ExportDownload.routes';
 // ---------- 3) App setup ----------
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-
-// Security-ish niceties
 app.disable('x-powered-by');
+app.set('trust proxy', 1); // helpful for secure cookies behind proxies
 
-// ---------- 4) CORS ----------
-// ---------- 4) CORS ----------
-import cors from 'cors';
-
-const explicit = (process.env.CORS_ORIGIN || '')
+// ---------- 4) CORS (must be BEFORE any routes/middleware that sends a response) ----------
+const allowlist = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
 
-app.use(cors({
+function isAllowedOrigin(origin?: string) {
+  if (!origin) return true; // server-to-server / curl / same-origin
+  try {
+    const { hostname } = new URL(origin);
+    if (allowlist.includes(origin)) return true;            // exact origin match from env
+    if (hostname.endsWith('.vercel.app')) return true;      // allow any Vercel preview/prod
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true);                 // Postman/curl
-    if (explicit.includes(origin)) return cb(null, true);
-    if (origin.endsWith('.vercel.app')) return cb(null, true); // allow Vercel previews
-    return cb(null, false); // silently deny instead of error
+    cb(null, isAllowedOrigin(origin));
   },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['set-cookie'],
+  optionsSuccessStatus: 204
+};
 
+app.use(cors(corsOptions));
+// Explicitly reply to all preflight requests with CORS headers
+app.options('*', cors(corsOptions));
 
 // ---------- 5) Core middleware ----------
 app.use(express.json());
@@ -85,7 +98,7 @@ const mongoUri =
 console.log('[db] Connecting to:', mongoUri);
 mongoose
   .connect(mongoUri)
-  .then(() => console.log('[db] Connected to MongoDB'))
+  .then(() => console.log('[db] ✅ Connected to MongoDB'))
   .catch(err => console.error('[db] connection error:', err));
 
 // ---------- 7) Routes ----------
@@ -110,7 +123,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/transactions', transactionRoutes);
 
 // Health check
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.send('✅ TaxPal backend is running successfully!');
 });
 
@@ -146,7 +159,7 @@ app.get('/__routes', (_req, res) => {
 if (!(global as any).__taxpal_server_started) {
   const server = app.listen(PORT, () => {
     (global as any).__taxpal_server_started = true;
-    console.log(`TaxPal server running on http://localhost:${PORT}`);
+    console.log(`🚀 TaxPal server running at http://localhost:${PORT}`);
     try {
       verifyMailer();
     } catch (e) {
