@@ -1,6 +1,1 @@
-{
-  "rewrites": [
-    { "source": "/api/v1/(.*)", "destination": "https://taxpal-8.onrender.com/api/v1/$1" },
-    { "source": "/(.*)", "destination": "/" }
-  ]
-}
+{ "rewrites": [{ "source": "/(.*)", "destination": "/" }] }
