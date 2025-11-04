@@ -88,42 +88,26 @@ router.put('/me', authenticateToken, async (req: AuthedRequest, res: Response) =
 // ========= PASSWORD RESET FLOW =========
 
 // FORGOT PASSWORD
-router.post(
-  '/forgot-password',
-  forgotValidator,
-  handleValidation,
-  async (req: Request, res: Response) => {
-    try {
-      const { email } = req.body;
-      const result = await authService.issueResetToken(email);
+router.post('/forgot-password', forgotValidator, handleValidation, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const result = await authService.issueResetToken(email);
 
-      // Always respond generically (avoid user enumeration)
-      if (!result) {
-        return res.json({ message: 'If that email exists, we sent a reset link.' });
-      }
+    if (!result) return res.json({ message: 'If that email exists, we sent a reset link.' });
 
-      const { resetToken } = result;
-      const base = process.env.CLIENT_URL || 'http://localhost:4200';
-      const resetUrl = `${base}/reset-password?token=${encodeURIComponent(resetToken)}`;
-      console.log('[reset-url]', resetUrl);
+    const { resetToken } = result;
+    const base = process.env.CLIENT_URL || 'http://localhost:4200';
+    const resetUrl = `${base}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
-      // ⬇️ IMPORTANT: actually await sending; returns true if a real email went out
-      const sent = await sendResetEmail(email, resetUrl);
-      if (!sent) {
-        // In Render free without RESEND_API_KEY, this will log and still 200
-        console.warn(
-          '[forgotPassword] Email not sent (console fallback). Check RESEND_API_KEY/MAIL_FROM or SMTP envs.'
-        );
-      }
+    const sent = await sendResetEmail(email, resetUrl);
+    if (!sent) console.warn('[forgotPassword] no provider/failed; see logs');
 
-      return res.json({ message: 'If that email exists, we sent a reset link.' });
-    } catch (e: any) {
-      // Still return 200 to avoid leaking whether the email exists
-      console.warn('[forgotPassword] error:', e?.message || e);
-      return res.json({ message: 'If that email exists, we sent a reset link.' });
-    }
+    return res.json({ message: 'If that email exists, we sent a reset link.' });
+  } catch (e: any) {
+    console.warn('[forgotPassword] error:', e?.message || e);
+    return res.json({ message: 'If that email exists, we sent a reset link.' });
   }
-);
+});
 
 // RESET PASSWORD
 router.post(
