@@ -52,18 +52,20 @@ const PORT = Number(process.env.PORT || 3000);
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // helpful for secure cookies behind proxies
 
-// ---------- 4) CORS (must be BEFORE any routes/middleware that sends a response) ----------
+// ---------- 4) CORS ----------
+import cors from 'cors';
+
 const allowlist = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
 
 function isAllowedOrigin(origin?: string) {
-  if (!origin) return true; // server-to-server / curl / same-origin
+  if (!origin) return true;
   try {
     const { hostname } = new URL(origin);
-    if (allowlist.includes(origin)) return true;            // exact origin match from env
-    if (hostname.endsWith('.vercel.app')) return true;      // allow any Vercel preview/prod
+    if (allowlist.includes(origin)) return true;
+    if (hostname.endsWith('.vercel.app')) return true;
     return false;
   } catch {
     return false;
@@ -76,14 +78,34 @@ const corsOptions: cors.CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  exposedHeaders: ['set-cookie'],
-  optionsSuccessStatus: 204
+  // 🔑 DO NOT set allowedHeaders here; let cors reflect whatever the browser asks for.
+  optionsSuccessStatus: 204,
 };
 
+// vary by Origin for caches/proxies
+app.use((req, res, next) => {
+  res.header('Vary', 'Origin');
+  next();
+});
+
 app.use(cors(corsOptions));
-// Explicitly reply to all preflight requests with CORS headers
-app.options('*', cors(corsOptions));
+
+// 🔒 Paranoid explicit preflight responder (handles any odd headers)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin as string | undefined;
+    if (isAllowedOrigin(origin)) {
+      const reqHeaders = req.headers['access-control-request-headers'];
+      res.header('Access-Control-Allow-Origin', origin!);
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      if (reqHeaders) res.header('Access-Control-Allow-Headers', String(reqHeaders));
+      return res.sendStatus(204);
+    }
+  }
+  next();
+});
+
 
 // ---------- 5) Core middleware ----------
 app.use(express.json());
