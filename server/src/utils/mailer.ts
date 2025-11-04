@@ -1,5 +1,6 @@
-// server/src/utils/mailer.ts
+// src/utils/mailer.ts  (or server/src/utils/mailer.ts)
 import nodemailer from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { Resend } from 'resend';
 
 type Transport = nodemailer.Transporter | null;
@@ -30,20 +31,23 @@ function buildTransport(): Transport {
   if (hasSMTP) {
     const port = Number(process.env.SMTP_PORT || 587);
     const secure = envBool(process.env.SMTP_SECURE, port === 465);
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
+
+    const smtpOptions: SMTPTransport.Options = {
+      host: process.env.SMTP_HOST!,
       port,
       secure,
       auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
       pool: true,
       maxConnections: 3,
       maxMessages: 50,
-      family: 4, // IPv4
-    });
+      // remove extra props that aren’t in SMTPTransport.Options to satisfy TS
+    };
+
+    return nodemailer.createTransport(smtpOptions);
   }
 
   // Gmail (2FA + App Password)
-  return nodemailer.createTransport({
+  const gmailOptions: SMTPTransport.Options = {
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
@@ -51,8 +55,9 @@ function buildTransport(): Transport {
     pool: true,
     maxConnections: 3,
     maxMessages: 50,
-    family: 4,
-  });
+  };
+
+  return nodemailer.createTransport(gmailOptions);
 }
 
 /** Lazy init so .env is loaded */
@@ -78,10 +83,10 @@ function buildMessage(resetUrl: string) {
   `;
   const text = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
   const from =
-    process.env.MAIL_FROM || // e.g., "TaxPal <onboarding@resend.dev>" or your domain sender
+    process.env.MAIL_FROM || // e.g., "TaxPal <onboarding@resend.dev>" or your verified domain sender
     process.env.SMTP_FROM ||
     process.env.GMAIL_USER ||
-    'TaxPal <onboarding@resend.dev>'; // safe dev default for Resend
+    'TaxPal <onboarding@resend.dev>'; // safe default for Resend sandbox
   return { subject, html, text, from };
 }
 
