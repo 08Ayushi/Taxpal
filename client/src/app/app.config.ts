@@ -14,13 +14,8 @@ export const appConfig: ApplicationConfig = {
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     provideClientHydration(withEventReplay()),
-    provideHttpClient(
-      withFetch(),
-      withInterceptors([
-        apiBaseUrlInterceptor, // ⬅️ prefixes relative URLs with your API domain
-        authInterceptor        // ⬅️ attaches Authorization, etc.
-      ])
-    ),
+    // provideHttpClient(withFetch(), withInterceptors([apiBaseUrlInterceptor, authInterceptor])),
+    provideHttpClient(withFetch(), withInterceptors([authInterceptor])),
     provideAnimations(),
   ]
 };
