@@ -23,12 +23,12 @@ if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 // ---------- 2) Imports that rely on env ----------
 import express from 'express';
 import mongoose from 'mongoose';
-import cors, { CorsOptions } from 'cors'; // ✅ single import
+import cors, { CorsOptions } from 'cors';
 
 // (optional) mailer verification if you use it
 import { verifyMailer } from './utils/mailer';
 
-// ✅ Route modules (use v1 paths consistently where you want)
+// ✅ Route modules
 import authRoutes from './api/auth/auth.routes';
 import incomeRoutes from './api/income/income.routes';
 import expenseRoutes from './api/expense/expense.routes';
@@ -36,21 +36,15 @@ import dashboardRoutes from './api/dashboard/dashboard-routes';
 import budgetsRoutes from './api/budget/budget.routes';
 import transactionRoutes from './api/transaction/transaction.routes';
 import categoriesRoutes from './api/Categories/category.routes';
-
-// ✅ Tax Estimator + Calendar
 import taxRoutes from './api/TaxEstimator/TaxEstimator.routes';
-
-// ✅ Financial Reports (CRUD)
 import financialReportsRoutes from './api/FinancialReport/FinancialReport.routes';
-
-// ✅ Export / Download (files)
 import exportRoutes from './api/ExportDownload/ExportDownload.routes';
 
 // ---------- 3) App setup ----------
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 app.disable('x-powered-by');
-app.set('trust proxy', 1); // helpful for secure cookies behind proxies
+app.set('trust proxy', 1); // secure cookies / correct proto behind Render
 
 // ---------- 4) CORS (reflective + preflight safety) ----------
 const allowlist = (process.env.CORS_ORIGIN || '')
@@ -59,11 +53,11 @@ const allowlist = (process.env.CORS_ORIGIN || '')
   .filter(Boolean);
 
 function isAllowedOrigin(origin?: string) {
-  if (!origin) return true;
+  if (!origin) return true; // curl/Postman
   try {
     const { hostname } = new URL(origin);
-    if (allowlist.includes(origin)) return true;     // exact origin from env
-    if (hostname.endsWith('.vercel.app')) return true; // any Vercel domain
+    if (allowlist.includes(origin)) return true;          // exact origins from env
+    if (hostname.endsWith('.vercel.app')) return true;    // any Vercel preview/prod
     return false;
   } catch {
     return false;
@@ -76,33 +70,31 @@ const corsOptions: CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // DO NOT set allowedHeaders here; we’ll mirror the browser’s request below.
+  // Let cors reflect request headers dynamically; don’t pin list here.
   optionsSuccessStatus: 204,
 };
 
 // Vary by Origin for caches/proxies
-app.use((req, res, next) => {
+app.use((_, res, next) => {
   res.header('Vary', 'Origin');
   next();
 });
 
-// Standard CORS
+// Standard CORS for normal requests
 app.use(cors(corsOptions));
 
-// Explicit preflight responder (mirrors requested headers)
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    const origin = req.headers.origin as string | undefined;
-    if (isAllowedOrigin(origin)) {
-      const reqHeaders = req.headers['access-control-request-headers'];
-      res.header('Access-Control-Allow-Origin', origin!);
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-      if (reqHeaders) res.header('Access-Control-Allow-Headers', String(reqHeaders));
-      return res.sendStatus(204);
-    }
-  }
-  next();
+// **Answer preflight explicitly and mirror requested headers**
+app.options('*', (req, res) => {
+  const origin = req.headers.origin as string | undefined;
+  if (!isAllowedOrigin(origin)) return res.sendStatus(403);
+  const reqHeaders = req.headers['access-control-request-headers'];
+
+  if (origin) res.header('Access-Control-Allow-Origin', origin);
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  if (reqHeaders) res.header('Access-Control-Allow-Headers', String(reqHeaders));
+
+  return res.sendStatus(204);
 });
 
 // ---------- 5) Core middleware ----------
@@ -121,7 +113,7 @@ mongoose
   .then(() => console.log('[db] ✅ Connected to MongoDB'))
   .catch(err => console.error('[db] connection error:', err));
 
-// ---------- 7) Routes ----------
+// ---------- 7) Routes (primary) ----------
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/incomes', incomeRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
@@ -129,22 +121,17 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/budgets', budgetsRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/categories', categoriesRoutes);
-
-// ✅ Tax Estimator + Calendar
 app.use('/api/v1/tax', taxRoutes);
-
-// ✅ Financial Reports (CRUD only)
 app.use('/api/v1/financial-reports', financialReportsRoutes);
-
-// ✅ Export/Download module (CSV/XLSX/PDF)
 app.use('/api/export', exportRoutes);
 
-// ---------- 7b) Legacy compatibility mounts (optional) ----------
-app.use('/api/transactions', transactionRoutes);
-// If your client ever calls /transactions/... (without /api/v1), uncomment:
-// app.use('/transactions', transactionRoutes);
+// ---------- 7b) Legacy compatibility aliases (optional) ----------
+// These help if any old frontend calls missed the /api/v1 prefix.
+app.use('/transactions', transactionRoutes); // fixes old DELETE /transactions/:id calls
+app.use('/incomes', incomeRoutes);
+app.use('/expenses', expenseRoutes);
 
-// Health check
+// ---------- 7c) Health ----------
 app.get('/', (_req, res) => {
   res.send('✅ TaxPal backend is running successfully!');
 });
@@ -183,11 +170,7 @@ if (!(global as any).__taxpal_server_started) {
     (global as any).__taxpal_server_started = true;
     console.log(`🚀 TaxPal server running at http://localhost:${PORT}`);
     try {
-      // Guard this if you want to avoid noisy logs in prod:
-      // if (process.env.NODE_ENV !== 'production' || process.env.MAILER_VERIFY === 'true') {
-      //   verifyMailer();
-      // }
-      verifyMailer();
+      verifyMailer(); // logs active mail mode (Resend/SMTP/console)
     } catch (e) {
       console.warn('[mailer] verify skipped/failed]:', (e as Error)?.message);
     }
