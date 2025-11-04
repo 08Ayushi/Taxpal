@@ -8,8 +8,7 @@ import {
   resetValidator,
 } from '../../utils/validators/authValidators';
 import { handleValidation } from '../../utils/validation';
-// ⬇️ use the boolean-returning sender
-import { sendResetEmail } from '../../utils/mailer';
+import { sendResetEmailAsync } from '../../utils/mailer'; // ⬅️ async, non-blocking
 
 const router = express.Router();
 console.log('[auth routes] loaded');
@@ -57,7 +56,7 @@ router.post(
 
 // ========= PROFILE: ME =========
 
-// GET /api/v1/auth/me  -> current user's public profile
+// GET /api/v1/auth/me
 router.get('/me', authenticateToken, async (req: AuthedRequest, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
@@ -71,7 +70,7 @@ router.get('/me', authenticateToken, async (req: AuthedRequest, res: Response) =
   }
 });
 
-// PUT /api/v1/auth/me  -> update name/email/country/income_bracket
+// PUT /api/v1/auth/me
 router.put('/me', authenticateToken, async (req: AuthedRequest, res: Response) => {
   if (!req.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
@@ -87,26 +86,28 @@ router.put('/me', authenticateToken, async (req: AuthedRequest, res: Response) =
 
 // ========= PASSWORD RESET FLOW =========
 
-// FORGOT PASSWORD
-router.post('/forgot-password', forgotValidator, handleValidation, async (req, res) => {
+// FORGOT PASSWORD (non-blocking email)
+router.post('/forgot-password', forgotValidator, handleValidation, async (req: Request, res: Response) => {
+  const { email } = req.body;
+
   try {
-    const { email } = req.body;
     const result = await authService.issueResetToken(email);
 
-    if (!result) return res.json({ message: 'If that email exists, we sent a reset link.' });
+    // Always respond generically to avoid user enumeration
+    if (result) {
+      const base = process.env.CLIENT_URL || 'http://localhost:4200';
+      const resetUrl = `${base}/reset-password?token=${encodeURIComponent(result.resetToken)}`;
+      console.log('[reset-url]', resetUrl);
 
-    const { resetToken } = result;
-    const base = process.env.CLIENT_URL || 'http://localhost:4200';
-    const resetUrl = `${base}/reset-password?token=${encodeURIComponent(resetToken)}`;
-
-    const sent = await sendResetEmail(email, resetUrl);
-    if (!sent) { console.warn('[forgotPassword] Email not sent (console fallback). Check MAIL_FROM / RESEND_API_KEY or SMTP vars.'); }
-
-    return res.json({ message: 'If that email exists, we sent a reset link.' });
+      // Fire-and-forget so the HTTP request returns instantly
+      sendResetEmailAsync(email, resetUrl);
+    }
   } catch (e: any) {
     console.warn('[forgotPassword] error:', e?.message || e);
-    return res.json({ message: 'If that email exists, we sent a reset link.' });
+    // still fall through to generic response
   }
+
+  return res.json({ message: 'If that email exists, we sent a reset link.' });
 });
 
 // RESET PASSWORD
