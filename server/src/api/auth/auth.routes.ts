@@ -100,7 +100,7 @@ router.post('/forgot-password', forgotValidator, handleValidation, async (req, r
     const resetUrl = `${base}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
     const sent = await sendResetEmail(email, resetUrl);
-    if (!sent) console.warn('[forgotPassword] no provider/failed; see logs');
+    if (!sent) { console.warn('[forgotPassword] Email not sent (console fallback). Check MAIL_FROM / RESEND_API_KEY or SMTP vars.'); }
 
     return res.json({ message: 'If that email exists, we sent a reset link.' });
   } catch (e: any) {
