@@ -4,6 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 import { isPlatformBrowser } from '@angular/common';
+import { environment } from 'src/environments/environment';
 
 export interface User {
   id: string;
@@ -29,7 +30,17 @@ export interface RegisterRequest {
 export class AuthService {
   private readonly TOKEN_KEY = 'token';
   private readonly USER_KEY  = 'user';
-  private readonly API_URL   = '/api/v1/auth'; // relative → works with proxy/prod
+
+  // Build a clean base:
+  // - production: environment.API_URL MUST be 'https://taxpal-8.onrender.com'
+  // - dev: environment.API_URL can be 'http://localhost:3000'
+  // We append `/api/v1/auth` exactly once here.
+  private readonly BASE = (() => {
+    const root = (environment as any)?.API_URL
+      ? String((environment as any).API_URL).replace(/\/+$/, '')
+      : '';
+    return `${root}/api/v1/auth`;
+  })();
 
   private tokenSubject = new BehaviorSubject<string | null>(null);
   private currentUserSubject = new BehaviorSubject<User | null>(null);
@@ -48,29 +59,29 @@ export class AuthService {
 
   // ---------- Auth actions ----------
   login(credentials: LoginRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.API_URL}/login`, credentials).pipe(
+    return this.http.post<AuthResponse>(`${this.BASE}/login`, credentials).pipe(
       tap(res => this.saveAuth(res))
     );
   }
 
   register(userData: RegisterRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.API_URL}/register`, userData).pipe(
+    return this.http.post<AuthResponse>(`${this.BASE}/register`, userData).pipe(
       tap(res => this.saveAuth(res))
     );
   }
 
   forgotPassword(email: string) {
-    return this.http.post<{ message: string }>(`${this.API_URL}/forgot-password`, { email });
+    return this.http.post<{ message: string }>(`${this.BASE}/forgot-password`, { email });
   }
 
   resetPassword(token: string, password: string) {
-    return this.http.post<AuthResponse>(`${this.API_URL}/reset-password`, { token, password })
+    return this.http.post<AuthResponse>(`${this.BASE}/reset-password`, { token, password })
       .pipe(tap(res => this.saveAuth(res)));
   }
 
   /** Uses your auth middleware to return the user from token */
   verifyToken(): Observable<{ user: User }> {
-    return this.http.get<{ user: User }>(`${this.API_URL}/me`).pipe(
+    return this.http.get<{ user: User }>(`${this.BASE}/me`).pipe(
       tap(r => this.saveUser(r.user))
     );
   }
