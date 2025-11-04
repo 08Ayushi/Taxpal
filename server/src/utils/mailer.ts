@@ -1,8 +1,10 @@
 // server/src/utils/mailer.ts
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 type Transport = nodemailer.Transporter | null;
 let transporter: Transport = null;
+let resend: Resend | null = null;
 
 /** Parse boolean-ish env values */
 function envBool(v: string | undefined, fallback = false): boolean {
@@ -10,7 +12,14 @@ function envBool(v: string | undefined, fallback = false): boolean {
   return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
 }
 
-/** Build a transporter from env (SMTP preferred; Gmail app password supported) */
+/** Prefer HTTP API (Resend) in prod to avoid SMTP blocks on hosts */
+function buildResend(): Resend | null {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  return new Resend(key);
+}
+
+/** Build SMTP transporter (works locally; many hosts block on free tiers) */
 function buildTransport(): Transport {
   const hasSMTP =
     !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
@@ -20,55 +29,36 @@ function buildTransport(): Transport {
 
   if (hasSMTP) {
     const port = Number(process.env.SMTP_PORT || 587);
-    const secure = envBool(process.env.SMTP_SECURE, port === 465); // SSL if 465
+    const secure = envBool(process.env.SMTP_SECURE, port === 465);
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,           // e.g. smtp.ethereal.email / sandbox.smtp.mailtrap.io
+      host: process.env.SMTP_HOST,
       port,
       secure,
-      auth: {
-        user: process.env.SMTP_USER!,
-        pass: process.env.SMTP_PASS!,
-      },
-      // tls: { rejectUnauthorized: true }, // enable/adjust if needed for corp SMTP
+      auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
     });
   }
 
-  // Gmail (requires 2FA + App Password)
+  // Gmail (2FA + App Password)
   return nodemailer.createTransport({
     service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_USER!,
-      pass: process.env.GMAIL_APP_PASS!, // 16-char app password
-    },
+    auth: { user: process.env.GMAIL_USER!, pass: process.env.GMAIL_APP_PASS! },
   });
 }
 
-/** Lazy-init so .env is loaded before we read it */
+/** Lazy init so .env is loaded */
 function getTransport(): Transport {
   if (transporter) return transporter;
   transporter = buildTransport();
   return transporter;
 }
+function getResend(): Resend | null {
+  if (resend) return resend;
+  resend = buildResend();
+  return resend;
+}
 
-/**
- * Send password reset email.
- * If no SMTP/Gmail configured, logs the reset URL (dev mode).
- */
-export async function sendResetEmail(to: string, resetUrl: string): Promise<void> {
-  const t = getTransport();
-
-  // DEV fallback: just log the link
-  if (!t) {
-    console.log(`[DEV][sendResetEmail] No SMTP configured. Reset URL for ${to}: ${resetUrl}`);
-    return;
-  }
-
-  const from =
-    process.env.MAIL_FROM ||
-    process.env.SMTP_FROM ||
-    process.env.GMAIL_USER ||
-    'no-reply@taxpal.local';
-
+/** Common message */
+function buildMessage(resetUrl: string) {
   const subject = 'Reset your TaxPal password';
   const html = `
     <p>We received a request to reset your password.</p>
@@ -77,30 +67,77 @@ export async function sendResetEmail(to: string, resetUrl: string): Promise<void
     <p><small>This link expires in 30 minutes. If you didn’t request this, you can ignore this email.</small></p>
   `;
   const text = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
-
-  try {
-    const info = await t.sendMail({ from, to, subject, text, html });
-    console.log('[mailer] sent reset email:', info.messageId);
-
-    // Ethereal preview URL (works when using Ethereal SMTP/test accounts)
-    const preview = nodemailer.getTestMessageUrl(info);
-    if (preview) console.log('[mailer] preview URL:', preview);
-  } catch (err: any) {
-    console.error('[mailer] sendResetEmail error:', err?.message || err);
-  }
+  const from =
+    process.env.MAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.GMAIL_USER ||
+    'TaxPal <onboarding@resend.dev>'; // safe default for Resend
+  return { subject, html, text, from };
 }
 
-/** Verify transport on boot so you know if mail can send */
+/** Send via Resend HTTP API (preferred in prod) */
+async function tryResend(to: string, resetUrl: string): Promise<boolean> {
+  const r = getResend();
+  if (!r) return false;
+  const { subject, html, text, from } = buildMessage(resetUrl);
+  await r.emails.send({ from, to, subject, html, text });
+  return true;
+}
+
+/** Send via SMTP (works locally; can time out on some hosts) */
+async function trySMTP(to: string, resetUrl: string): Promise<boolean> {
+  const t = getTransport();
+  if (!t) return false;
+  const { subject, html, text, from } = buildMessage(resetUrl);
+  const info = await t.sendMail({ from, to, subject, html, text });
+  console.log('[mailer] sent via SMTP id:', info.messageId);
+  const preview = nodemailer.getTestMessageUrl(info);
+  if (preview) console.log('[mailer] preview URL:', preview);
+  return true;
+}
+
+/** Public API: verify on boot (non-fatal) */
 export async function verifyMailer(): Promise<void> {
+  if (getResend()) {
+    console.log('[mailer] Resend ready');
+    return;
+  }
   const t = getTransport();
   if (!t) {
-    console.log('[mailer] DEV mode: no SMTP configured — reset links will be logged to console.');
+    console.log('[mailer] No mail provider configured — will log reset links.');
     return;
   }
   try {
     await t.verify();
-    console.log('[mailer] transport verified and ready.');
+    console.log('[mailer] SMTP transport verified and ready.');
   } catch (e: any) {
     console.warn('[mailer] transport verification failed:', e?.message || e);
   }
+}
+
+/** Public API: send email; prefer HTTP; fall back to SMTP; never throw */
+export async function sendResetEmail(to: string, resetUrl: string): Promise<void> {
+  try {
+    if (await tryResend(to, resetUrl)) return;
+  } catch (e: any) {
+    console.warn('[mailer] Resend error:', e?.message || e);
+  }
+
+  try {
+    if (await trySMTP(to, resetUrl)) return;
+  } catch (e: any) {
+    console.warn('[mailer] SMTP error:', e?.message || e);
+  }
+
+  // Final fallback: just log the link
+  console.log(`[DEV][sendResetEmail] No mail sent. Reset URL for ${to}: ${resetUrl}`);
+}
+
+/** Fire-and-forget wrapper to avoid blocking HTTP requests */
+export function sendResetEmailAsync(to: string, resetUrl: string): void {
+  // Don’t block route: run in background and log errors
+  Promise.race([
+    sendResetEmail(to, resetUrl),
+    new Promise((_r, rej) => setTimeout(() => rej(new Error('mail timeout')), 1500)),
+  ]).catch(err => console.warn('[mailer] async send skipped:', err?.message || err));
 }
