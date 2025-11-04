@@ -31,18 +31,12 @@ function buildTransport(): Transport {
   if (hasSMTP) {
     const port = Number(process.env.SMTP_PORT || 587);
     const secure = envBool(process.env.SMTP_SECURE, port === 465);
-
     const smtpOptions: SMTPTransport.Options = {
       host: process.env.SMTP_HOST!,
       port,
       secure,
       auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 50,
-      // remove extra props that aren’t in SMTPTransport.Options to satisfy TS
     };
-
     return nodemailer.createTransport(smtpOptions);
   }
 
@@ -52,11 +46,7 @@ function buildTransport(): Transport {
     port: 465,
     secure: true,
     auth: { user: process.env.GMAIL_USER!, pass: process.env.GMAIL_APP_PASS! },
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 50,
   };
-
   return nodemailer.createTransport(gmailOptions);
 }
 
@@ -83,19 +73,22 @@ function buildMessage(resetUrl: string) {
   `;
   const text = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
   const from =
-    process.env.MAIL_FROM || // e.g., "TaxPal <onboarding@resend.dev>" or your verified domain sender
+    process.env.MAIL_FROM || // e.g., "TaxPal <onboarding@resend.dev>" or your domain sender
     process.env.SMTP_FROM ||
     process.env.GMAIL_USER ||
-    'TaxPal <onboarding@resend.dev>'; // safe default for Resend sandbox
-  return { subject, html, text, from };
+    'TaxPal <onboarding@resend.dev>'; // safe default for Resend
+  const replyTo = process.env.MAIL_REPLY_TO || undefined; // optional
+  return { subject, html, text, from, replyTo };
 }
 
 /** Try Resend (HTTP). Returns true if sent. */
 async function tryResend(to: string, resetUrl: string): Promise<boolean> {
   const r = getResend();
   if (!r) return false;
-  const { subject, html, text, from } = buildMessage(resetUrl);
-  const res = await r.emails.send({ from, to, subject, html, text });
+  const { subject, html, text, from, replyTo } = buildMessage(resetUrl);
+  const payload: any = { from, to, subject, html, text };
+  if (replyTo) payload.reply_to = replyTo;
+  const res = await r.emails.send(payload);
   if ((res as any)?.error) throw new Error(JSON.stringify((res as any).error));
   return true;
 }
@@ -104,8 +97,8 @@ async function tryResend(to: string, resetUrl: string): Promise<boolean> {
 async function trySMTP(to: string, resetUrl: string): Promise<boolean> {
   const t = getTransport();
   if (!t) return false;
-  const { subject, html, text, from } = buildMessage(resetUrl);
-  const info = await t.sendMail({ from, to, subject, html, text });
+  const { subject, html, text, from, replyTo } = buildMessage(resetUrl);
+  const info = await t.sendMail({ from, to, subject, html, text, replyTo });
   console.log('[mailer] sent via SMTP id:', info.messageId);
   const preview = nodemailer.getTestMessageUrl(info);
   if (preview) console.log('[mailer] preview URL:', preview);
