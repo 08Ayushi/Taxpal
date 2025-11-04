@@ -1,4 +1,3 @@
-// 1) Load env
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -20,10 +19,8 @@ for (const p of candidates) {
 }
 if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 
-// 2) imports
 import express from 'express';
 import mongoose from 'mongoose';
-import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { verifyMailer } from './utils/mailer';
 
@@ -43,7 +40,7 @@ const PORT = Number(process.env.PORT || 3000);
 
 app.disable('x-powered-by');
 
-// CORS
+// ---------- CORS ----------
 const explicit = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())
@@ -51,10 +48,10 @@ const explicit = (process.env.CORS_ORIGIN || '')
 
 const corsOpts: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true);
+    if (!origin) return cb(null, true);                 // curl/Postman
     if (explicit.includes(origin)) return cb(null, true);
-    if (origin.endsWith('.vercel.app')) return cb(null, true);
-    return cb(null, false);
+    if (origin.endsWith('.vercel.app')) return cb(null, true); // allow Vercel
+    return cb(null, false); // deny others
   },
   credentials: true,
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
@@ -65,12 +62,11 @@ const corsOpts: cors.CorsOptions = {
 app.use(cors(corsOpts));
 app.options('*', cors(corsOpts));
 
-// Core middleware
-app.use(cookieParser());
+// ---------- Body parsers ----------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// DB
+// ---------- DB ----------
 const mongoUri =
   process.env.MONGODB_URI ||
   process.env.MONGO_URI ||
@@ -82,7 +78,7 @@ mongoose
   .then(() => console.log('[db] ✅ Connected to MongoDB'))
   .catch(err => console.error('[db] connection error:', err));
 
-// Routes
+// ---------- Routes ----------
 app.get('/', (_req, res) => res.send('✅ TaxPal backend is running successfully!'));
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/incomes', incomeRoutes);
@@ -95,7 +91,7 @@ app.use('/api/v1/tax', taxRoutes);
 app.use('/api/v1/financial-reports', financialReportsRoutes);
 app.use('/api/export', exportRoutes);
 
-// Legacy mount
+// Legacy mount (kept for compatibility)
 app.use('/api/transactions', transactionRoutes);
 
 // Health & inspector
@@ -105,7 +101,8 @@ app.get('/__routes', (_req, res) => {
   const routes: string[] = [];
   stack.forEach((l: any) => {
     if (l.name === 'router' && l.handle?.stack) {
-      const prefix = l.regexp?.toString().replace(/^\/\^\\/, '/').replace(/\\\/\?\(\?\=\/\|\$\)\/i$/, '') || '';
+      const prefix =
+        l.regexp?.toString().replace(/^\/\^\\/, '/').replace(/\\\/\?\(\?\=\/\|\$\)\/i$/, '') || '';
       l.handle.stack.forEach((s: any) => {
         if (s.route) routes.push(`${Object.keys(s.route.methods).join(',').toUpperCase()} ${prefix}${s.route.path}`);
       });
@@ -116,14 +113,13 @@ app.get('/__routes', (_req, res) => {
   res.json({ routes });
 });
 
-// start
+// ---------- Start ----------
 if (!(global as any).__taxpal_server_started) {
   const server = app.listen(PORT, () => {
     (global as any).__taxpal_server_started = true;
     console.log(`🚀 TaxPal server running at http://localhost:${PORT}`);
     verifyMailer().catch(() => {});
   });
-
   const shutdown = () => server.close(() => process.exit(0));
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
