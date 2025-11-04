@@ -8,7 +8,7 @@ import {
   resetValidator,
 } from '../../utils/validators/authValidators';
 import { handleValidation } from '../../utils/validation';
-import { sendResetEmailAsync } from '../../utils/mailer'; // ⬅️ async, non-blocking
+import { sendResetEmail } from '../../utils/mailer'; // ⬅️ import only this
 
 const router = express.Router();
 console.log('[auth routes] loaded');
@@ -86,25 +86,26 @@ router.put('/me', authenticateToken, async (req: AuthedRequest, res: Response) =
 
 // ========= PASSWORD RESET FLOW =========
 
-// FORGOT PASSWORD (non-blocking email)
+// FORGOT PASSWORD (fire-and-forget to avoid timeouts/502s)
 router.post('/forgot-password', forgotValidator, handleValidation, async (req: Request, res: Response) => {
   const { email } = req.body;
 
   try {
     const result = await authService.issueResetToken(email);
 
-    // Always respond generically to avoid user enumeration
     if (result) {
       const base = process.env.CLIENT_URL || 'http://localhost:4200';
       const resetUrl = `${base}/reset-password?token=${encodeURIComponent(result.resetToken)}`;
       console.log('[reset-url]', resetUrl);
 
-      // Fire-and-forget so the HTTP request returns instantly
-      sendResetEmailAsync(email, resetUrl);
+      // Fire-and-forget: don't await; log errors but return immediately
+      sendResetEmail(email, resetUrl).catch(err =>
+        console.warn('[mailer] async send skipped:', err?.message || err)
+      );
     }
   } catch (e: any) {
     console.warn('[forgotPassword] error:', e?.message || e);
-    // still fall through to generic response
+    // Fall through to generic response
   }
 
   return res.json({ message: 'If that email exists, we sent a reset link.' });
