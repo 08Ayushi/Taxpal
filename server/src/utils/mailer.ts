@@ -146,11 +146,4 @@ export async function sendResetEmail(to: string, resetUrl: string): Promise<bool
 }
 
 
-export function sendResetEmailAsync(to: string, resetUrl: string): void {
-  // return quickly; cap long providers with a short timeout
-  Promise.race([
-    sendResetEmail(to, resetUrl),
-    new Promise((_r, rej) => setTimeout(() => rej(new Error('mail timeout')), 1500)),
-  ]).catch(err => console.warn('[mailer] async send skipped:', err?.message || err));
-}
 
