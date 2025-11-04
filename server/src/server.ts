@@ -110,6 +110,10 @@ app.use('/api/export', exportRoutes);
 app.use('/api/transactions', transactionRoutes);
 
 // Health check
+app.get('/', (req, res) => {
+  res.send('✅ TaxPal backend is running successfully!');
+});
+
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'OK', message: 'TaxPal API is running' });
 });
