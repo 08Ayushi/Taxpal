@@ -29,12 +29,11 @@ export interface RegisterRequest {
 export class AuthService {
   private readonly TOKEN_KEY = 'token';
   private readonly USER_KEY  = 'user';
-  private readonly API_URL   = '/api/v1/auth'; // relative → works with proxy/prod
+  private readonly API_URL   = '/api/v1/auth';
 
   private tokenSubject = new BehaviorSubject<string | null>(null);
   private currentUserSubject = new BehaviorSubject<User | null>(null);
 
-  /** Streams */
   public token$ = this.tokenSubject.asObservable();
   public currentUser$ = this.currentUserSubject.asObservable();
 
@@ -46,7 +45,6 @@ export class AuthService {
     this.loadFromStorage();
   }
 
-  // ---------- Auth actions ----------
   login(credentials: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API_URL}/login`, credentials).pipe(
       tap(res => this.saveAuth(res))
@@ -68,7 +66,6 @@ export class AuthService {
       .pipe(tap(res => this.saveAuth(res)));
   }
 
-  /** Uses your auth middleware to return the user from token */
   verifyToken(): Observable<{ user: User }> {
     return this.http.get<{ user: User }>(`${this.API_URL}/me`).pipe(
       tap(r => this.saveUser(r.user))
@@ -85,20 +82,13 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
-  // ---------- Consumers rely on these ----------
   getToken(): string | null {
     return isPlatformBrowser(this.platformId) ? localStorage.getItem(this.TOKEN_KEY) : null;
   }
 
-  isAuthenticated(): boolean {
-    return !!this.getToken();
-  }
+  isAuthenticated(): boolean { return !!this.getToken(); }
+  getCurrentUser(): User | null { return this.currentUserSubject.value; }
 
-  getCurrentUser(): User | null {
-    return this.currentUserSubject.value;
-  }
-
-  // ---------- Storage helpers ----------
   private saveAuth(res: AuthResponse) {
     this.setToken(res.token);
     this.saveUser(res.user);
@@ -124,7 +114,7 @@ export class AuthService {
     if (token) this.tokenSubject.next(token);
     if (userStr) {
       try { this.currentUserSubject.next(JSON.parse(userStr) as User); }
-      catch { /* corrupted storage */ this.logout(); }
+      catch { this.logout(); }
     }
   }
 }
