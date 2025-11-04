@@ -23,7 +23,7 @@ if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 // ---------- 2) Imports that rely on env ----------
 import express from 'express';
 import mongoose from 'mongoose';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors'; // ✅ single import
 
 // (optional) mailer verification if you use it
 import { verifyMailer } from './utils/mailer';
@@ -52,9 +52,7 @@ const PORT = Number(process.env.PORT || 3000);
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // helpful for secure cookies behind proxies
 
-// ---------- 4) CORS ----------
-import cors from 'cors';
-
+// ---------- 4) CORS (reflective + preflight safety) ----------
 const allowlist = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())
@@ -64,33 +62,34 @@ function isAllowedOrigin(origin?: string) {
   if (!origin) return true;
   try {
     const { hostname } = new URL(origin);
-    if (allowlist.includes(origin)) return true;
-    if (hostname.endsWith('.vercel.app')) return true;
+    if (allowlist.includes(origin)) return true;     // exact origin from env
+    if (hostname.endsWith('.vercel.app')) return true; // any Vercel domain
     return false;
   } catch {
     return false;
   }
 }
 
-const corsOptions: cors.CorsOptions = {
+const corsOptions: CorsOptions = {
   origin(origin, cb) {
     cb(null, isAllowedOrigin(origin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // 🔑 DO NOT set allowedHeaders here; let cors reflect whatever the browser asks for.
+  // DO NOT set allowedHeaders here; we’ll mirror the browser’s request below.
   optionsSuccessStatus: 204,
 };
 
-// vary by Origin for caches/proxies
+// Vary by Origin for caches/proxies
 app.use((req, res, next) => {
   res.header('Vary', 'Origin');
   next();
 });
 
+// Standard CORS
 app.use(cors(corsOptions));
 
-// 🔒 Paranoid explicit preflight responder (handles any odd headers)
+// Explicit preflight responder (mirrors requested headers)
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     const origin = req.headers.origin as string | undefined;
@@ -105,7 +104,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
 
 // ---------- 5) Core middleware ----------
 app.use(express.json());
@@ -143,6 +141,8 @@ app.use('/api/export', exportRoutes);
 
 // ---------- 7b) Legacy compatibility mounts (optional) ----------
 app.use('/api/transactions', transactionRoutes);
+// If your client ever calls /transactions/... (without /api/v1), uncomment:
+// app.use('/transactions', transactionRoutes);
 
 // Health check
 app.get('/', (_req, res) => {
@@ -183,6 +183,10 @@ if (!(global as any).__taxpal_server_started) {
     (global as any).__taxpal_server_started = true;
     console.log(`🚀 TaxPal server running at http://localhost:${PORT}`);
     try {
+      // Guard this if you want to avoid noisy logs in prod:
+      // if (process.env.NODE_ENV !== 'production' || process.env.MAILER_VERIFY === 'true') {
+      //   verifyMailer();
+      // }
       verifyMailer();
     } catch (e) {
       console.warn('[mailer] verify skipped/failed]:', (e as Error)?.message);
