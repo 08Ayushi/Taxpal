@@ -8,7 +8,8 @@ import {
   resetValidator,
 } from '../../utils/validators/authValidators';
 import { handleValidation } from '../../utils/validation';
-import { sendResetEmailAsync } from '../../utils/mailer';
+// ⬇️ use the boolean-returning sender
+import { sendResetEmail } from '../../utils/mailer';
 
 const router = express.Router();
 console.log('[auth routes] loaded');
@@ -92,21 +93,35 @@ router.post(
   forgotValidator,
   handleValidation,
   async (req: Request, res: Response) => {
-    const { email } = req.body;
-    const result = await authService.issueResetToken(email);
-    
-    // Always respond generically
-    if (!result) return res.json({ message: 'If that email exists, we sent a reset link.' });
-    
-    const { resetToken } = result;
-    const resetUrl = `${(process.env.CLIENT_URL || 'http://localhost:4200')}/reset-password?token=${resetToken}`;
-    console.log('[reset-url]', resetUrl);
-    
-    // fire-and-forget; do NOT await (prevents 502 on hosts that block SMTP)
-    sendResetEmailAsync(email, resetUrl);
-    
-    // immediately return OK (no user enumeration)
-    return res.json({ message: 'If that email exists, we sent a reset link.' });
+    try {
+      const { email } = req.body;
+      const result = await authService.issueResetToken(email);
+
+      // Always respond generically (avoid user enumeration)
+      if (!result) {
+        return res.json({ message: 'If that email exists, we sent a reset link.' });
+      }
+
+      const { resetToken } = result;
+      const base = process.env.CLIENT_URL || 'http://localhost:4200';
+      const resetUrl = `${base}/reset-password?token=${encodeURIComponent(resetToken)}`;
+      console.log('[reset-url]', resetUrl);
+
+      // ⬇️ IMPORTANT: actually await sending; returns true if a real email went out
+      const sent = await sendResetEmail(email, resetUrl);
+      if (!sent) {
+        // In Render free without RESEND_API_KEY, this will log and still 200
+        console.warn(
+          '[forgotPassword] Email not sent (console fallback). Check RESEND_API_KEY/MAIL_FROM or SMTP envs.'
+        );
+      }
+
+      return res.json({ message: 'If that email exists, we sent a reset link.' });
+    } catch (e: any) {
+      // Still return 200 to avoid leaking whether the email exists
+      console.warn('[forgotPassword] error:', e?.message || e);
+      return res.json({ message: 'If that email exists, we sent a reset link.' });
+    }
   }
 );
 
