@@ -1,98 +1,106 @@
 // server/src/utils/mailer.ts
 import nodemailer from 'nodemailer';
 
-const GMAIL_USER = process.env.GMAIL_USER;
-const GMAIL_APP_PASS = process.env.GMAIL_APP_PASS;
-const MAIL_FROM_RAW = process.env.MAIL_FROM || `TaxPal <${GMAIL_USER || 'no-reply@localhost'}>`;
+type Transport = nodemailer.Transporter | null;
+let transporter: Transport = null;
 
-/**
- * Ensure the "from" address uses the authenticated Gmail (helps avoid DMARC/SPF issues).
- * If MAIL_FROM uses a different address than GMAIL_USER, we keep the display name
- * but force the underlying email to GMAIL_USER.
- */
-function normalizeFrom(fromRaw: string, gmailUser?: string) {
-  if (!gmailUser) return fromRaw;
-  const displayMatch = fromRaw.match(/^(.*)<(.+)>$/); // "Name <email@domain>"
-  if (displayMatch) {
-    const display = displayMatch[1]?.trim() || 'TaxPal';
-    const emailInFrom = displayMatch[2]?.trim().toLowerCase();
-    if (emailInFrom && emailInFrom !== gmailUser.toLowerCase()) {
-      console.warn('[mailer] MAIL_FROM address differs from GMAIL_USER; using authenticated Gmail to avoid DMARC issues.');
-      return `${display} <${gmailUser}>`;
-    }
-  }
-  // If it's just an email or already matches, return as-is.
-  return fromRaw;
+/** Parse boolean-ish env values */
+function envBool(v: string | undefined, fallback = false): boolean {
+  if (v === undefined) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
 }
 
-const MAIL_FROM = normalizeFrom(MAIL_FROM_RAW, GMAIL_USER);
+/** Build a transporter from env (SMTP preferred; Gmail app password supported) */
+function buildTransport(): Transport {
+  const hasSMTP =
+    !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+  const hasGmail = !!process.env.GMAIL_USER && !!process.env.GMAIL_APP_PASS;
 
-let transporter: nodemailer.Transporter | undefined;
+  if (!hasSMTP && !hasGmail) return null;
 
-export function isRealEmailEnabled(): boolean {
-  return Boolean(GMAIL_USER && GMAIL_APP_PASS);
-}
-
-export function getTransporter() {
-  if (transporter) return transporter;
-
-  if (isRealEmailEnabled()) {
-    transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASS }
+  if (hasSMTP) {
+    const port = Number(process.env.SMTP_PORT || 587);
+    const secure = envBool(process.env.SMTP_SECURE, port === 465); // SSL if 465
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,           // e.g. smtp.ethereal.email / sandbox.smtp.mailtrap.io
+      port,
+      secure,
+      auth: {
+        user: process.env.SMTP_USER!,
+        pass: process.env.SMTP_PASS!,
+      },
+      // tls: { rejectUnauthorized: true }, // enable/adjust if needed for corp SMTP
     });
-  } else {
-    // Dev fallback: no real emails, but logs the full payload to console
-    transporter = nodemailer.createTransport({ jsonTransport: true } as any);
-    console.warn('[mailer] Using JSON transport (no real emails will be sent).');
   }
 
+  // Gmail (requires 2FA + App Password)
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER!,
+      pass: process.env.GMAIL_APP_PASS!, // 16-char app password
+    },
+  });
+}
+
+/** Lazy-init so .env is loaded before we read it */
+function getTransport(): Transport {
+  if (transporter) return transporter;
+  transporter = buildTransport();
   return transporter;
 }
 
-export async function verifyMailer() {
+/**
+ * Send password reset email.
+ * If no SMTP/Gmail configured, logs the reset URL (dev mode).
+ */
+export async function sendResetEmail(to: string, resetUrl: string): Promise<void> {
+  const t = getTransport();
+
+  // DEV fallback: just log the link
+  if (!t) {
+    console.log(`[DEV][sendResetEmail] No SMTP configured. Reset URL for ${to}: ${resetUrl}`);
+    return;
+  }
+
+  const from =
+    process.env.MAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.GMAIL_USER ||
+    'no-reply@taxpal.local';
+
+  const subject = 'Reset your TaxPal password';
+  const html = `
+    <p>We received a request to reset your password.</p>
+    <p><a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none">Reset password</a></p>
+    <p>Or copy this link into your browser:<br>${resetUrl}</p>
+    <p><small>This link expires in 30 minutes. If you didn’t request this, you can ignore this email.</small></p>
+  `;
+  const text = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
+
   try {
-    await getTransporter().verify();
-    console.log('[mailer] transport verified and ready. From:', MAIL_FROM);
-  } catch (e: any) {
-    console.warn('[mailer] verification failed:', e?.message || e);
+    const info = await t.sendMail({ from, to, subject, text, html });
+    console.log('[mailer] sent reset email:', info.messageId);
+
+    // Ethereal preview URL (works when using Ethereal SMTP/test accounts)
+    const preview = nodemailer.getTestMessageUrl(info);
+    if (preview) console.log('[mailer] preview URL:', preview);
+  } catch (err: any) {
+    console.error('[mailer] sendResetEmail error:', err?.message || err);
   }
 }
 
-export async function sendResetEmail(to: string, resetUrl: string) {
-  const html = `
-    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.6;">
-      <h2 style="margin:0 0 12px">Reset your TaxPal password</h2>
-      <p>We received a request to reset the password for your account.</p>
-      <p><a href="${resetUrl}" style="display:inline-block;padding:10px 16px;border-radius:6px;background:#4f46e5;color:#fff;text-decoration:none;">Reset Password</a></p>
-      <p>If the button doesn't work, copy and paste this URL into your browser:</p>
-      <p style="word-break:break-all;"><a href="${resetUrl}">${resetUrl}</a></p>
-      <p>This link will expire in 30 minutes. If you didn't request this, you can ignore this email.</p>
-      <hr/>
-      <p style="color:#6b7280;font-size:12px;">© ${new Date().getFullYear()} TaxPal</p>
-    </div>
-  `;
-
-  const text = `Reset your TaxPal password:
-${resetUrl}
-
-This link expires in 30 minutes. If you didn't request this, ignore this email.`;
-
-  const info = await getTransporter().sendMail({
-    from: MAIL_FROM, // keep the authenticated Gmail as the underlying address
-    to,
-    subject: 'TaxPal — Reset your password',
-    text,
-    html
-  });
-
-  if ((info as any).message) {
-    // JSON transport path (dev): log full payload for quick debugging
-    const msg = (info as any).message.toString?.() || (info as any).message;
-    console.log('[mailer] (jsonTransport) email payload:', msg);
-  } else {
-    console.log(`[mailer] sent reset email to ${to} via ${isRealEmailEnabled() ? 'smtp.gmail.com' : 'jsonTransport'}`);
+/** Verify transport on boot so you know if mail can send */
+export async function verifyMailer(): Promise<void> {
+  const t = getTransport();
+  if (!t) {
+    console.log('[mailer] DEV mode: no SMTP configured — reset links will be logged to console.');
+    return;
+  }
+  try {
+    await t.verify();
+    console.log('[mailer] transport verified and ready.');
+  } catch (e: any) {
+    console.warn('[mailer] transport verification failed:', e?.message || e);
   }
 }
