@@ -1,0 +1,37 @@
+# Node/JS
+node_modules/
+dist/
+build/
+coverage/
+.tmp/
+.tmp*/
+.tmp/**
+
+# Angular / tooling
+.angular/
+.cache/
+.npm/
+.eslintcache
+
+# Env & secrets
+.env
+.env.*
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Hosts/platform
+.vercel/
+.render/
