@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
-import { environment } from '../../../environments/environments';
+import { environment } from 'src/environments/environment';
 
 export interface Transaction {
   _id: string;
