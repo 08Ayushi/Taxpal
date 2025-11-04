@@ -35,13 +35,23 @@ function buildTransport(): Transport {
       port,
       secure,
       auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 50,
+      family: 4, // IPv4
     });
   }
 
   // Gmail (2FA + App Password)
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: { user: process.env.GMAIL_USER!, pass: process.env.GMAIL_APP_PASS! },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 50,
+    family: 4,
   });
 }
 
@@ -68,23 +78,24 @@ function buildMessage(resetUrl: string) {
   `;
   const text = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
   const from =
-    process.env.MAIL_FROM ||
+    process.env.MAIL_FROM || // e.g., "TaxPal <onboarding@resend.dev>" or your domain sender
     process.env.SMTP_FROM ||
     process.env.GMAIL_USER ||
-    'TaxPal <onboarding@resend.dev>'; // safe default for Resend
+    'TaxPal <onboarding@resend.dev>'; // safe dev default for Resend
   return { subject, html, text, from };
 }
 
-/** Send via Resend HTTP API (preferred in prod) */
+/** Try Resend (HTTP). Returns true if sent. */
 async function tryResend(to: string, resetUrl: string): Promise<boolean> {
   const r = getResend();
   if (!r) return false;
   const { subject, html, text, from } = buildMessage(resetUrl);
-  await r.emails.send({ from, to, subject, html, text });
+  const res = await r.emails.send({ from, to, subject, html, text });
+  if ((res as any)?.error) throw new Error(JSON.stringify((res as any).error));
   return true;
 }
 
-/** Send via SMTP (works locally; can time out on some hosts) */
+/** Try SMTP (Gmail/other). Returns true if sent. */
 async function trySMTP(to: string, resetUrl: string): Promise<boolean> {
   const t = getTransport();
   if (!t) return false;
@@ -96,48 +107,46 @@ async function trySMTP(to: string, resetUrl: string): Promise<boolean> {
   return true;
 }
 
-/** Public API: verify on boot (non-fatal) */
+/** Verify on boot (non-fatal). Logs the active mode. */
 export async function verifyMailer(): Promise<void> {
-  if (getResend()) {
+  const hasResend = !!getResend();
+  const hasSMTP = !!getTransport();
+
+  if (hasResend) {
     console.log('[mailer] Resend ready');
     return;
   }
-  const t = getTransport();
-  if (!t) {
-    console.log('[mailer] No mail provider configured — will log reset links.');
+  if (hasSMTP) {
+    try {
+      await transporter!.verify();
+      console.log('[mailer] SMTP transport verified and ready.');
+    } catch (e: any) {
+      console.warn('[mailer] SMTP verify failed:', e?.message || e);
+    }
     return;
   }
-  try {
-    await t.verify();
-    console.log('[mailer] SMTP transport verified and ready.');
-  } catch (e: any) {
-    console.warn('[mailer] transport verification failed:', e?.message || e);
-  }
+  console.log('[mailer] No mail provider configured — will log reset links (console fallback).');
 }
 
-/** Public API: send email; prefer HTTP; fall back to SMTP; never throw */
-export async function sendResetEmail(to: string, resetUrl: string): Promise<void> {
+/**
+ * Send reset email.
+ * Returns true if an email was actually sent (Resend or SMTP).
+ * Returns false if nothing could be sent (console fallback only).
+ */
+export async function sendResetEmail(to: string, resetUrl: string): Promise<boolean> {
   try {
-    if (await tryResend(to, resetUrl)) return;
+    if (await tryResend(to, resetUrl)) return true;
   } catch (e: any) {
     console.warn('[mailer] Resend error:', e?.message || e);
   }
 
   try {
-    if (await trySMTP(to, resetUrl)) return;
+    if (await trySMTP(to, resetUrl)) return true;
   } catch (e: any) {
     console.warn('[mailer] SMTP error:', e?.message || e);
   }
 
-  // Final fallback: just log the link
+  // Final fallback: just log the link (useful in dev/console mode)
   console.log(`[DEV][sendResetEmail] No mail sent. Reset URL for ${to}: ${resetUrl}`);
-}
-
-/** Fire-and-forget wrapper to avoid blocking HTTP requests */
-export function sendResetEmailAsync(to: string, resetUrl: string): void {
-  // Don’t block route: run in background and log errors
-  Promise.race([
-    sendResetEmail(to, resetUrl),
-    new Promise((_r, rej) => setTimeout(() => rej(new Error('mail timeout')), 1500)),
-  ]).catch(err => console.warn('[mailer] async send skipped:', err?.message || err));
+  return false;
 }
