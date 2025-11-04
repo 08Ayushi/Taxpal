@@ -1,27 +1,29 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const userSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, trim: true },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-      match: [/^\S+@\S+\.\S+$/, 'Invalid email format'],
-    },
-    password: { type: String, required: true, minlength: 6 },
+export interface IUser extends Document {
+  name: string;
+  email: string;
+  password: string;
+  country?: string;
+  income_bracket?: 'low' | 'middle' | 'high';
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
+}
 
-    country: { type: String, default: 'US' },
-    income_bracket: { type: String, enum: ['low', 'middle', 'high'], default: 'middle' },
+const UserSchema = new Schema<IUser>({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String, required: true },
 
-    resetPasswordToken: { type: String, default: undefined },
-    resetPasswordExpires: { type: Date, default: undefined },
-  },
-  { timestamps: true }
-);
+  country: { type: String, default: 'US' },
+  income_bracket: { type: String, enum: ['low', 'middle', 'high'], default: 'middle' },
 
-userSchema.index({ email: 1 }, { unique: true });
+  resetPasswordToken: { type: String, index: true },
+  resetPasswordExpires: { type: Date, index: true }
+}, {
+  timestamps: true,
+  versionKey: false,
+  strict: true
+});
 
-export default mongoose.model('User', userSchema);
+export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
