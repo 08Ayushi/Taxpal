@@ -1,4 +1,3 @@
-// 1) Load env
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -20,7 +19,6 @@ for (const p of candidates) {
 }
 if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 
-// 2) imports
 import express from 'express';
 import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
@@ -51,9 +49,9 @@ const explicit = (process.env.CORS_ORIGIN || '')
 
 const corsOpts: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true);
+    if (!origin) return cb(null, true);                 // curl/Postman
     if (explicit.includes(origin)) return cb(null, true);
-    if (origin.endsWith('.vercel.app')) return cb(null, true);
+    if (origin.endsWith('.vercel.app')) return cb(null, true); // allow Vercel
     return cb(null, false);
   },
   credentials: true,
@@ -65,7 +63,6 @@ const corsOpts: cors.CorsOptions = {
 app.use(cors(corsOpts));
 app.options('*', cors(corsOpts));
 
-// Core middleware
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -116,14 +113,13 @@ app.get('/__routes', (_req, res) => {
   res.json({ routes });
 });
 
-// start
+// Start
 if (!(global as any).__taxpal_server_started) {
   const server = app.listen(PORT, () => {
     (global as any).__taxpal_server_started = true;
     console.log(`🚀 TaxPal server running at http://localhost:${PORT}`);
     verifyMailer().catch(() => {});
   });
-
   const shutdown = () => server.close(() => process.exit(0));
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
