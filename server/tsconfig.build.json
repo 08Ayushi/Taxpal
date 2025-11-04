@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "**/*.spec.ts",
+    "src/api/**/*.service.ts",
+    "src/swagger.ts"
+  ],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmitOnError": false
+  }
+}
