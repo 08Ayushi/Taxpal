@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
-import { environment } from 'src/environments/environment';
 
 export interface Transaction {
   _id: string;
@@ -65,12 +64,8 @@ interface TransactionResponseDTO extends Omit<TransactionResponse, 'transactions
 
 @Injectable({ providedIn: 'root' })
 export class TransactionService {
-  private readonly BASE =
-    (environment as any)?.API_URL && typeof (environment as any).API_URL === 'string'
-      ? (environment as any).API_URL
-      : '/api/v1';
-
-  private readonly API = `${this.BASE}/transactions`;
+  // Always use the canonical API path; apiBaseUrlInterceptor will prepend the origin.
+  private readonly API = `/api/v1/transactions`;
 
   constructor(private http: HttpClient) {}
 
