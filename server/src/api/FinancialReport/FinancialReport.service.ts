@@ -1,26 +1,33 @@
-import FinancialReport, { IFinancialReport, ReportFormat, ReportPeriod, ReportType } from './FinancialReport.model';
+import FinancialReport, {
+  IFinancialReport,
+  ReportFormat,
+  ReportPeriod,
+  ReportType
+} from './FinancialReport.model';
 
-function startOfMonth(d: Date){ return new Date(d.getFullYear(), d.getMonth(), 1); }
-function endOfMonth(d: Date){ return new Date(d.getFullYear(), d.getMonth()+1, 0, 23,59,59,999); }
-function startOfQuarter(d: Date){
-  const q = Math.floor(d.getMonth()/3)*3;
+function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function endOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999); }
+
+function startOfQuarter(d: Date) {
+  const q = Math.floor(d.getMonth() / 3) * 3;
   return new Date(d.getFullYear(), q, 1);
 }
-function endOfQuarter(d: Date){
+function endOfQuarter(d: Date) {
   const s = startOfQuarter(d);
-  return new Date(s.getFullYear(), s.getMonth()+3, 0, 23,59,59,999);
+  return new Date(s.getFullYear(), s.getMonth() + 3, 0, 23, 59, 59, 999);
 }
-function startOfYear(d: Date){ return new Date(d.getFullYear(),0,1); }
-function endOfYear(d: Date){ return new Date(d.getFullYear(),11,31,23,59,59,999); }
 
-export function resolvePeriod(period: ReportPeriod){
+function startOfYear(d: Date) { return new Date(d.getFullYear(), 0, 1); }
+function endOfYear(d: Date) { return new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999); }
+
+export function resolvePeriod(period: ReportPeriod) {
   const now = new Date();
   let dateFrom = startOfMonth(now);
   let dateTo = endOfMonth(now);
   let label = 'Current Month';
 
   if (period === 'last-month') {
-    const lm = new Date(now.getFullYear(), now.getMonth()-1, 15);
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 15);
     dateFrom = startOfMonth(lm);
     dateTo = endOfMonth(lm);
     label = 'Last Month';
@@ -37,6 +44,15 @@ export function resolvePeriod(period: ReportPeriod){
   return { dateFrom, dateTo, label };
 }
 
+function getFriendlyReportTypeName(reportType: ReportType): string {
+  switch (reportType) {
+    case 'income-statement': return 'Income Statement';
+    case 'balance-sheet':    return 'Balance Sheet';
+    case 'cash-flow':        return 'Cash Flow';
+    default:                 return String(reportType);
+  }
+}
+
 export async function createReport(
   reportType: ReportType,
   period: ReportPeriod,
@@ -44,10 +60,16 @@ export async function createReport(
   createdBy?: string
 ): Promise<IFinancialReport> {
   const { dateFrom, dateTo, label } = resolvePeriod(period);
+  const friendlyType = getFriendlyReportTypeName(reportType);
 
   const doc = await FinancialReport.create({
-    reportType, period, periodLabel: label, format, dateFrom, dateTo,
-    name: `${reportType} — ${label}`,
+    reportType,
+    period,
+    periodLabel: label,
+    format,
+    dateFrom,
+    dateTo,
+    name: `${friendlyType} — ${label}`,
     createdBy: createdBy || undefined
   });
 
