@@ -80,6 +80,15 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
 
+  {
+    path: 'automatic-tax-calculator',
+    loadComponent: () =>
+      import('./features/tax/components/automatic-tax-estimator/automatic-tax-calculator.component')
+        .then(m => m.AutomaticTaxCalculatorComponent),
+    canActivate: [authGuard]
+  },
+  
+
 
   // ✅ Financial Reports (standalone component)
   {
