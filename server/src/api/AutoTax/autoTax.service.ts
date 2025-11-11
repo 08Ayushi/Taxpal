@@ -124,8 +124,12 @@ function computeTaxBreakdown(taxableIncome: number): {
 }
 
 /**
- * Ensure quarterly reminders exist for the given FY and tax amount.
- * Returns only unpaid reminders.
+ * Ensure quarterly reminders match the *current* tax payable:
+ *
+ * - Uses existing `isPaid` reminders as already-paid installments.
+ * - Rebuilds ONLY the unpaid schedule for the remaining liability.
+ * - If tax increases after payments, new reminders are added.
+ * - If tax fully covered, upcoming reminders are cleared.
  */
 async function ensureQuarterReminders(
   userId: Types.ObjectId,
@@ -133,79 +137,112 @@ async function ensureQuarterReminders(
   fyStartYear: number,
   taxPayable: number
 ): Promise<TaxPaymentReminderDoc[]> {
-  if (taxPayable <= 0) {
-    await TaxPaymentReminder.deleteMany({ userId, financialYear: fyLabel });
-    return [];
-  }
-
-  let reminders = await TaxPaymentReminder.find({
+  // Get all existing reminders for this FY (paid + unpaid)
+  const existing = await TaxPaymentReminder.find({
     userId,
     financialYear: fyLabel,
   })
     .sort({ dueDate: 1 })
     .exec();
 
-  if (!reminders.length) {
-    const base = Math.round(taxPayable / 4);
-    const q1 = base;
-    const q2 = base;
-    const q3 = base;
-    const q4 = taxPayable - (q1 + q2 + q3); // adjust last quarter
+  const paidTotal = existing
+    .filter((r) => r.isPaid)
+    .reduce((sum, r) => sum + (r.amount || 0), 0);
 
-    const defs = [
-      {
-        quarter: 'Q1',
-        label: `Q1 ${fyStartYear}`,
-        period: `Apr - Jun ${fyStartYear}`,
-        dueDate: new Date(fyStartYear, 6, 15), // 15 Jul
-        amount: q1,
-      },
-      {
-        quarter: 'Q2',
-        label: `Q2 ${fyStartYear}`,
-        period: `Jul - Sep ${fyStartYear}`,
-        dueDate: new Date(fyStartYear, 8, 15), // 15 Sep
-        amount: q2,
-      },
-      {
-        quarter: 'Q3',
-        label: `Q3 ${fyStartYear}`,
-        period: `Oct - Dec ${fyStartYear}`,
-        dueDate: new Date(fyStartYear + 1, 0, 15), // 15 Jan next year
-        amount: q3,
-      },
-      {
-        quarter: 'Q4',
-        label: `Q4 ${fyStartYear}`,
-        period: `Jan - Mar ${fyStartYear + 1}`,
-        dueDate: new Date(fyStartYear + 1, 2, 15), // 15 Mar next year
-        amount: q4,
-      },
-    ];
-
-    reminders = await TaxPaymentReminder.insertMany(
-      defs.map((d) => ({
-        userId,
-        financialYear: fyLabel,
-        quarter: d.quarter,
-        label: d.label,
-        period: d.period,
-        dueDate: d.dueDate,
-        amount: d.amount,
-        isPaid: false,
-      }))
-    );
+  // If no tax -> wipe everything
+  if (taxPayable <= 0) {
+    if (existing.length) {
+      await TaxPaymentReminder.deleteMany({ userId, financialYear: fyLabel });
+    }
+    return [];
   }
 
-  return reminders.filter((r) => !r.isPaid);
+  // If what's already marked paid >= new liability -> clear future schedule
+  if (paidTotal >= taxPayable) {
+    if (existing.some((r) => !r.isPaid)) {
+      await TaxPaymentReminder.deleteMany({
+        userId,
+        financialYear: fyLabel,
+        isPaid: false,
+      });
+    }
+    return [];
+  }
+
+  // Remaining tax to be scheduled
+  const remaining = taxPayable - paidTotal;
+
+  // Drop all old unpaid reminders (they were based on stale numbers)
+  if (existing.some((r) => !r.isPaid)) {
+    await TaxPaymentReminder.deleteMany({
+      userId,
+      financialYear: fyLabel,
+      isPaid: false,
+    });
+  }
+
+  // Split remaining into up to 4 installments (equal-ish, last adjusted)
+  const base = Math.floor(remaining / 4);
+  const q1 = base;
+  const q2 = base;
+  const q3 = base;
+  const q4 = remaining - (q1 + q2 + q3);
+
+  const suffix = Date.now().toString(); // to keep `quarter` unique under the composite index
+
+  const defs = [
+    {
+      quarterKey: `Q1-${suffix}`,
+      label: `Q1 ${fyStartYear}`,
+      period: `Apr - Jun ${fyStartYear}`,
+      dueDate: new Date(fyStartYear, 6, 15), // 15 Jul
+      amount: q1,
+    },
+    {
+      quarterKey: `Q2-${suffix}`,
+      label: `Q2 ${fyStartYear}`,
+      period: `Jul - Sep ${fyStartYear}`,
+      dueDate: new Date(fyStartYear, 8, 15), // 15 Sep
+      amount: q2,
+    },
+    {
+      quarterKey: `Q3-${suffix}`,
+      label: `Q3 ${fyStartYear}`,
+      period: `Oct - Dec ${fyStartYear}`,
+      dueDate: new Date(fyStartYear + 1, 0, 15), // 15 Jan next year
+      amount: q3,
+    },
+    {
+      quarterKey: `Q4-${suffix}`,
+      label: `Q4 ${fyStartYear}`,
+      period: `Jan - Mar ${fyStartYear + 1}`,
+      dueDate: new Date(fyStartYear + 1, 2, 15), // 15 Mar next year
+      amount: q4,
+    },
+  ].filter((d) => d.amount > 0); // avoid zero-amount reminders
+
+  if (!defs.length) {
+    return [];
+  }
+
+  const newReminders = await TaxPaymentReminder.insertMany(
+    defs.map((d) => ({
+      userId,
+      financialYear: fyLabel,
+      quarter: d.quarterKey,
+      label: d.label,
+      period: d.period,
+      dueDate: d.dueDate,
+      amount: d.amount,
+      isPaid: false,
+    }))
+  );
+
+  return newReminders;
 }
 
 /* ========= Public service API (used by controller) ========= */
 
-/**
- * Build automatic tax summary for a given authenticated user id.
- * This is what your controller calls.
- */
 export async function getAutoTaxSummaryForUser(
   rawUserId: string
 ): Promise<AutoTaxSummary> {
@@ -271,13 +308,16 @@ export async function getAutoTaxSummaryForUser(
       taxPayable
     );
 
-    schedule = reminders.map((r) => ({
-      id: r._id.toString(),
-      label: r.label,
-      period: r.period,
-      dueDate: r.dueDate,
-      amount: r.amount,
-    }));
+    schedule = reminders
+      .filter((r) => !r.isPaid)
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
+      .map((r) => ({
+        id: r._id.toString(),
+        label: r.label,
+        period: r.period,
+        dueDate: r.dueDate,
+        amount: r.amount,
+      }));
   }
 
   return {
@@ -295,7 +335,6 @@ export async function getAutoTaxSummaryForUser(
 
 /**
  * Mark a given reminder as paid for a specific user.
- * Controller can call this directly.
  */
 export async function markReminderPaidForUser(
   rawUserId: string,
