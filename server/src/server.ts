@@ -23,12 +23,11 @@ if (!loaded) console.warn('[env] .env not found; tried:', candidates);
 // ---------- 2) Imports that rely on env ----------
 import express from 'express';
 import mongoose from 'mongoose';
-import cors, { CorsOptions } from 'cors';
 
 // (optional) mailer verification if you use it
 import { verifyMailer } from './utils/mailer';
 
-// ✅ Route modules
+// ✅ Route modules (use v1 paths consistently where you want)
 import authRoutes from './api/auth/auth.routes';
 import incomeRoutes from './api/income/income.routes';
 import expenseRoutes from './api/expense/expense.routes';
@@ -36,66 +35,43 @@ import dashboardRoutes from './api/dashboard/dashboard-routes';
 import budgetsRoutes from './api/budget/budget.routes';
 import transactionRoutes from './api/transaction/transaction.routes';
 import categoriesRoutes from './api/Categories/category.routes';
+import { autoTaxRouter } from './api/AutoTax/autoTax.routes';
+
+// ✅ Tax Estimator + Calendar
 import taxRoutes from './api/TaxEstimator/TaxEstimator.routes';
+
+// ✅ Financial Reports (CRUD)
 import financialReportsRoutes from './api/FinancialReport/FinancialReport.routes';
+
+// ✅ Export / Download (files)
 import exportRoutes from './api/ExportDownload/ExportDownload.routes';
 
 // ---------- 3) App setup ----------
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-app.disable('x-powered-by');
-app.set('trust proxy', 1); // secure cookies / correct proto behind Render
 
-// ---------- 4) CORS (reflective + preflight safety) ----------
-const allowlist = (process.env.CORS_ORIGIN || '')
+// Security-ish niceties
+app.disable('x-powered-by');
+
+// ---------- 4) CORS ----------
+// ---------- 4) CORS ----------
+import cors from 'cors';
+
+const explicit = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
 
-function isAllowedOrigin(origin?: string) {
-  if (!origin) return true; // curl/Postman
-  try {
-    const { hostname } = new URL(origin);
-    if (allowlist.includes(origin)) return true;          // exact origins from env
-    if (hostname.endsWith('.vercel.app')) return true;    // any Vercel preview/prod
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-const corsOptions: CorsOptions = {
+app.use(cors({
   origin(origin, cb) {
-    cb(null, isAllowedOrigin(origin));
+    if (!origin) return cb(null, true);                 // Postman/curl
+    if (explicit.includes(origin)) return cb(null, true);
+    if (origin.endsWith('.vercel.app')) return cb(null, true); // allow Vercel previews
+    return cb(null, false); // silently deny instead of error
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // Let cors reflect request headers dynamically; don’t pin list here.
-  optionsSuccessStatus: 204,
-};
+}));
 
-// Vary by Origin for caches/proxies
-app.use((_, res, next) => {
-  res.header('Vary', 'Origin');
-  next();
-});
-
-// Standard CORS for normal requests
-app.use(cors(corsOptions));
-
-// **Answer preflight explicitly and mirror requested headers**
-app.options('*', (req, res) => {
-  const origin = req.headers.origin as string | undefined;
-  if (!isAllowedOrigin(origin)) return res.sendStatus(403);
-  const reqHeaders = req.headers['access-control-request-headers'];
-
-  if (origin) res.header('Access-Control-Allow-Origin', origin);
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  if (reqHeaders) res.header('Access-Control-Allow-Headers', String(reqHeaders));
-
-  return res.sendStatus(204);
-});
 
 // ---------- 5) Core middleware ----------
 app.use(express.json());
@@ -110,10 +86,13 @@ const mongoUri =
 console.log('[db] Connecting to:', mongoUri);
 mongoose
   .connect(mongoUri)
-  .then(() => console.log('[db] ✅ Connected to MongoDB'))
+  .then(() => console.log('[db] Connected to MongoDB'))
   .catch(err => console.error('[db] connection error:', err));
 
-// ---------- 7) Routes (primary) ----------
+// ---------- 7) Routes ----------
+app.get('/', (req, res) => {
+  res.send('✅ TaxPal backend is running successfully!');
+});
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/incomes', incomeRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
@@ -121,21 +100,24 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/budgets', budgetsRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/categories', categoriesRoutes);
+
+// ✅ Tax Estimator + Calendar
 app.use('/api/v1/tax', taxRoutes);
+
+// ✅ Automatic Tax Calculator (from transactions)
+app.use('/api/v1/tax/auto', autoTaxRouter);
+
+
+// ✅ Financial Reports (CRUD only)
 app.use('/api/v1/financial-reports', financialReportsRoutes);
+
+// ✅ Export/Download module (CSV/XLSX/PDF)
 app.use('/api/export', exportRoutes);
 
-// ---------- 7b) Legacy compatibility aliases (optional) ----------
-// These help if any old frontend calls missed the /api/v1 prefix.
-app.use('/transactions', transactionRoutes); // fixes old DELETE /transactions/:id calls
-app.use('/incomes', incomeRoutes);
-app.use('/expenses', expenseRoutes);
+// ---------- 7b) Legacy compatibility mounts (optional) ----------
+app.use('/api/transactions', transactionRoutes);
 
-// ---------- 7c) Health ----------
-app.get('/', (_req, res) => {
-  res.send('✅ TaxPal backend is running successfully!');
-});
-
+// Health check
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'OK', message: 'TaxPal API is running' });
 });
@@ -168,9 +150,9 @@ app.get('/__routes', (_req, res) => {
 if (!(global as any).__taxpal_server_started) {
   const server = app.listen(PORT, () => {
     (global as any).__taxpal_server_started = true;
-    console.log(`🚀 TaxPal server running at http://localhost:${PORT}`);
+    console.log(`TaxPal server running on http://localhost:${PORT}`);
     try {
-      verifyMailer(); // logs active mail mode (Resend/SMTP/console)
+      verifyMailer();
     } catch (e) {
       console.warn('[mailer] verify skipped/failed]:', (e as Error)?.message);
     }
