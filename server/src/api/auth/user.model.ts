@@ -1,3 +1,4 @@
+// server/src/api/auth/user.model.ts
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema(
@@ -13,8 +14,27 @@ const userSchema = new mongoose.Schema(
     },
     password: { type: String, required: true, minlength: 6 },
 
-    country: { type: String, default: 'US' },
-    income_bracket: { type: String, enum: ['low', 'middle', 'high'], default: 'middle' },
+    // Only 4 supported countries (codes).
+    country: {
+      type: String,
+      enum: ['US', 'CA', 'IN', 'AU'],
+      default: 'US',
+    },
+
+    // Currency derived from country:
+    // - 'INR' if IN
+    // - 'USD' if US/CA/AU
+    currency: {
+      type: String,
+      enum: ['INR', 'USD'],
+      default: 'USD',
+    },
+
+    income_bracket: {
+      type: String,
+      enum: ['low', 'middle', 'high'],
+      default: 'middle',
+    },
 
     resetPasswordToken: { type: String, default: undefined },
     resetPasswordExpires: { type: Date, default: undefined },
