@@ -6,18 +6,18 @@ import TaxPaymentReminder, {
   TaxPaymentReminderDoc,
 } from './TaxPaymentReminder.model';
 
-const TAX_FREE_THRESHOLD = 1200000; // ₹12,00,000
+const TAX_FREE_THRESHOLD = 1200000; // 12,00,000
 
 type SlabConfig = { from: number; to?: number; rate: number };
 
 const SLABS: SlabConfig[] = [
-  { from: 0, to: 250000, rate: 0 }, // 0% up to 2.5L
-  { from: 250000, to: 500000, rate: 0.05 }, // 5%
-  { from: 500000, to: 750000, rate: 0.1 }, // 10%
-  { from: 750000, to: 1000000, rate: 0.15 }, // 15%
-  { from: 1000000, to: 1250000, rate: 0.2 }, // 20%
-  { from: 1250000, to: 1500000, rate: 0.25 }, // 25%
-  { from: 1500000, rate: 0.3 }, // 30% above 15L
+  { from: 0, to: 250000, rate: 0 },
+  { from: 250000, to: 500000, rate: 0.05 },
+  { from: 500000, to: 750000, rate: 0.1 },
+  { from: 750000, to: 1000000, rate: 0.15 },
+  { from: 1000000, to: 1250000, rate: 0.2 },
+  { from: 1250000, to: 1500000, rate: 0.25 },
+  { from: 1500000, rate: 0.3 },
 ];
 
 /* ========= Shared interfaces (mirror frontend) ========= */
@@ -25,7 +25,7 @@ const SLABS: SlabConfig[] = [
 export interface TaxSlabLine {
   from: number;
   to: number | null;
-  rate: number; // 0.05 => 5%
+  rate: number;
   taxablePortion: number;
   tax: number;
 }
@@ -50,7 +50,7 @@ export interface AutoTaxSummary {
   financialYear: string;
 }
 
-/* ========= Internal helpers ========= */
+/* ========= Helpers ========= */
 
 function toObjectId(id: string): Types.ObjectId | null {
   return mongoose.Types.ObjectId.isValid(id)
@@ -59,12 +59,11 @@ function toObjectId(id: string): Types.ObjectId | null {
 }
 
 function getFinancialYearRange(now = new Date()) {
-  const m = now.getMonth(); // 0-based
+  const m = now.getMonth();
   const y = now.getFullYear();
 
-  // FY: 1 Apr -> 31 Mar
+  // FY: 1 Apr – 31 Mar
   if (m < 3) {
-    // Jan–Mar: current FY started last year
     const startYear = y - 1;
     const endYear = y;
     return {
@@ -106,8 +105,8 @@ function computeTaxBreakdown(taxableIncome: number): {
 
     if (slab.rate > 0) {
       slabs.push({
-        from: lower + 1, // e.g. 2,50,001
-        to: slab.to ?? null, // null => "Above"
+        from: lower + 1,
+        to: slab.to ?? null,
         rate: slab.rate,
         taxablePortion,
         tax: Math.round(tax),
@@ -124,12 +123,11 @@ function computeTaxBreakdown(taxableIncome: number): {
 }
 
 /**
- * Ensure quarterly reminders match the *current* tax payable:
- *
- * - Uses existing `isPaid` reminders as already-paid installments.
- * - Rebuilds ONLY the unpaid schedule for the remaining liability.
- * - If tax increases after payments, new reminders are added.
- * - If tax fully covered, upcoming reminders are cleared.
+ * Ensure reminders reflect the CURRENT tax:
+ * - Paid reminders are treated as already-settled tax.
+ * - Unpaid reminders are always rebuilt from scratch for the remaining amount.
+ * - If tax goes up, new reminders are added for the extra.
+ * - If tax goes down or is fully covered, unpaid reminders are removed.
  */
 async function ensureQuarterReminders(
   userId: Types.ObjectId,
@@ -137,19 +135,16 @@ async function ensureQuarterReminders(
   fyStartYear: number,
   taxPayable: number
 ): Promise<TaxPaymentReminderDoc[]> {
-  // Get all existing reminders for this FY (paid + unpaid)
   const existing = await TaxPaymentReminder.find({
     userId,
     financialYear: fyLabel,
-  })
-    .sort({ dueDate: 1 })
-    .exec();
+  }).exec();
 
   const paidTotal = existing
     .filter((r) => r.isPaid)
     .reduce((sum, r) => sum + (r.amount || 0), 0);
 
-  // If no tax -> wipe everything
+  // If no tax => clear everything
   if (taxPayable <= 0) {
     if (existing.length) {
       await TaxPaymentReminder.deleteMany({ userId, financialYear: fyLabel });
@@ -157,8 +152,10 @@ async function ensureQuarterReminders(
     return [];
   }
 
-  // If what's already marked paid >= new liability -> clear future schedule
-  if (paidTotal >= taxPayable) {
+  const remaining = taxPayable - paidTotal;
+
+  // Nothing more to schedule; clean any stale unpaid & exit
+  if (remaining <= 0) {
     if (existing.some((r) => !r.isPaid)) {
       await TaxPaymentReminder.deleteMany({
         userId,
@@ -169,57 +166,51 @@ async function ensureQuarterReminders(
     return [];
   }
 
-  // Remaining tax to be scheduled
-  const remaining = taxPayable - paidTotal;
+  // Always rebuild unpaid reminders from scratch for the remaining amount
+  await TaxPaymentReminder.deleteMany({
+    userId,
+    financialYear: fyLabel,
+    isPaid: false,
+  });
 
-  // Drop all old unpaid reminders (they were based on stale numbers)
-  if (existing.some((r) => !r.isPaid)) {
-    await TaxPaymentReminder.deleteMany({
-      userId,
-      financialYear: fyLabel,
-      isPaid: false,
-    });
-  }
-
-  // Split remaining into up to 4 installments (equal-ish, last adjusted)
+  // Split remaining across 4 installments; last one adjusted
   const base = Math.floor(remaining / 4);
   const q1 = base;
   const q2 = base;
   const q3 = base;
   const q4 = remaining - (q1 + q2 + q3);
 
-  const suffix = Date.now().toString(); // to keep `quarter` unique under the composite index
-
+  const suffix = Date.now().toString(); // avoid unique index clashes
   const defs = [
     {
       quarterKey: `Q1-${suffix}`,
       label: `Q1 ${fyStartYear}`,
       period: `Apr - Jun ${fyStartYear}`,
-      dueDate: new Date(fyStartYear, 6, 15), // 15 Jul
+      dueDate: new Date(fyStartYear, 6, 15),
       amount: q1,
     },
     {
       quarterKey: `Q2-${suffix}`,
       label: `Q2 ${fyStartYear}`,
       period: `Jul - Sep ${fyStartYear}`,
-      dueDate: new Date(fyStartYear, 8, 15), // 15 Sep
+      dueDate: new Date(fyStartYear, 8, 15),
       amount: q2,
     },
     {
       quarterKey: `Q3-${suffix}`,
       label: `Q3 ${fyStartYear}`,
       period: `Oct - Dec ${fyStartYear}`,
-      dueDate: new Date(fyStartYear + 1, 0, 15), // 15 Jan next year
+      dueDate: new Date(fyStartYear + 1, 0, 15),
       amount: q3,
     },
     {
       quarterKey: `Q4-${suffix}`,
       label: `Q4 ${fyStartYear}`,
       period: `Jan - Mar ${fyStartYear + 1}`,
-      dueDate: new Date(fyStartYear + 1, 2, 15), // 15 Mar next year
+      dueDate: new Date(fyStartYear + 1, 2, 15),
       amount: q4,
     },
-  ].filter((d) => d.amount > 0); // avoid zero-amount reminders
+  ].filter((d) => d.amount > 0);
 
   if (!defs.length) {
     return [];
@@ -241,19 +232,16 @@ async function ensureQuarterReminders(
   return newReminders;
 }
 
-/* ========= Public service API (used by controller) ========= */
+/* ========= Public API ========= */
 
 export async function getAutoTaxSummaryForUser(
   rawUserId: string
 ): Promise<AutoTaxSummary> {
   const userId = toObjectId(rawUserId);
-  if (!userId) {
-    throw new Error('Invalid user id');
-  }
+  if (!userId) throw new Error('Invalid user id');
 
   const { start, end, fyLabel, fyStartYear } = getFinancialYearRange();
 
-  // Aggregate total income & expenses for current FY
   const totals = await Transaction.aggregate([
     {
       $match: {
@@ -290,7 +278,6 @@ export async function getAutoTaxSummaryForUser(
       'en-IN'
     )} is below the threshold of ₹12,00,000. No tax is due.`;
 
-    // Clear any old reminders for this FY
     await TaxPaymentReminder.deleteMany({ userId, financialYear: fyLabel });
   } else {
     const result = computeTaxBreakdown(taxableIncome);
@@ -333,17 +320,12 @@ export async function getAutoTaxSummaryForUser(
   };
 }
 
-/**
- * Mark a given reminder as paid for a specific user.
- */
 export async function markReminderPaidForUser(
   rawUserId: string,
   reminderId: string
 ): Promise<{ message: string; id: string }> {
   const userId = toObjectId(rawUserId);
-  if (!userId) {
-    throw new Error('Invalid user id');
-  }
+  if (!userId) throw new Error('Invalid user id');
 
   if (!mongoose.Types.ObjectId.isValid(reminderId)) {
     throw new Error('Invalid reminder id');
