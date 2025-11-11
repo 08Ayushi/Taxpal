@@ -9,7 +9,7 @@
     <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="auth-form">
       <!-- Username -->
       <div class="form-group">
-        <label for="email" class="form-label">Email ID:</label>
+        <label for="email" class="form-label">Email:</label>
         <div class="input-wrap">
           <input
             type="email"
@@ -17,7 +17,7 @@
             formControlName="email"
             class="form-input"
             [class.error]="isFieldInvalid('email')"
-            placeholder="Enter your Email ID"
+            placeholder="Enter your email id"
           />
         </div>
         <div *ngIf="getFieldError('email')" class="error-message">
