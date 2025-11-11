@@ -33,6 +33,7 @@ export interface AutoTaxSummary {
 
 @Injectable({ providedIn: 'root' })
 export class AutoTaxService {
+  // Use the same pattern as your other services
   private readonly BASE = `${environment.API_URL}/api/v1/tax/auto`;
 
   constructor(private http: HttpClient) {}
