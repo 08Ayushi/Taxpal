@@ -32,7 +32,7 @@ export interface AutoTaxSummary {
 
 @Injectable({ providedIn: 'root' })
 export class AutoTaxService {
-  private readonly BASE = '/api/v1/tax/auto';
+  private readonly BASE = '/api/v1/tax/automatic-tax-calculator';
 
   constructor(private http: HttpClient) {}
 
@@ -47,3 +47,4 @@ export class AutoTaxService {
     );
   }
 }
+
