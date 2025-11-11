@@ -2,14 +2,25 @@ import { Component, OnInit, HostListener, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { TransactionService, Transaction, CreateTransactionRequest } from '../../../core/services/transaction.service';
+import {
+  TransactionService,
+  Transaction,
+  CreateTransactionRequest
+} from '../../../core/services/transaction.service';
 import { AuthService, User } from '../../../core/services/auth.service';
 import { BudgetsListComponent } from '../../budgets/component/budgets-list.component';
+import { CurrencyService } from '../../../core/services/currency.service';
 
 @Component({
   selector: 'app-transactions',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink, RouterLinkActive, BudgetsListComponent],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    RouterLink,
+    RouterLinkActive,
+    BudgetsListComponent
+  ],
   templateUrl: './transactions.component.html',
   styleUrls: ['./transactions.component.css']
 })
@@ -23,13 +34,13 @@ export class TransactionsComponent implements OnInit {
   /** ====== Existing state/signals ====== */
   transactions = signal<Transaction[]>([]);
   isLoading = signal(false);
-  showAddForm = signal(false); // kept (form still present, no top-bar trigger)
+  showAddForm = signal(false);
   isSubmitting = signal(false);
   errorMessage = signal<string | null>(null);
   isDeletingAll = signal(false);
   private deletingIds = signal<Set<string>>(new Set());
 
-  /** ====== Budget modal state (now functional) ====== */
+  /** ====== Budget modal state ====== */
   showBudget = false;
 
   /** ====== Form ====== */
@@ -59,7 +70,8 @@ export class TransactionsComponent implements OnInit {
   constructor(
     private fb: FormBuilder,
     private transactionService: TransactionService,
-    public auth: AuthService
+    public auth: AuthService,
+    public currencyService: CurrencyService
   ) {
     this.transactionForm = this.fb.group({
       type: ['expense', [Validators.required]],
@@ -73,28 +85,37 @@ export class TransactionsComponent implements OnInit {
     this.user = this.auth.getCurrentUser();
   }
 
-  ngOnInit(): void { this.loadTransactions(); }
+  ngOnInit(): void {
+    this.loadTransactions();
+  }
 
-  /** ================= Drawer helpers (same as Dashboard) ================= */
+  /** ================= Drawer helpers ================= */
   toggleMobileNav(): void {
     this.mobileNavOpen = !this.mobileNavOpen;
     this.lockScroll(this.mobileNavOpen);
   }
+
   closeMobileNav(): void {
     this.mobileNavOpen = false;
     this.lockScroll(false);
   }
+
   closeMobileNavIfSmall(): void {
     if (window.innerWidth <= 1024) this.closeMobileNav();
   }
+
   private lockScroll(lock: boolean) {
-    try { document.body.style.overflow = lock ? 'hidden' : ''; } catch {}
+    try {
+      document.body.style.overflow = lock ? 'hidden' : '';
+    } catch {}
   }
+
   @HostListener('document:keydown', ['$event'])
   onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && this.mobileNavOpen) this.closeMobileNav();
     if (e.key === 'Escape' && this.showBudget) this.closeBudget();
   }
+
   @HostListener('window:resize')
   onResize() {
     if (window.innerWidth > 1024 && this.mobileNavOpen) this.closeMobileNav();
@@ -105,6 +126,7 @@ export class TransactionsComponent implements OnInit {
     const s = (this.user?.name || this.user?.email || 'U').trim();
     return s ? s[0].toUpperCase() : 'U';
   }
+
   get secondInitial(): string {
     const n = this.user?.name?.trim();
     if (!n) return '';
@@ -180,9 +202,20 @@ export class TransactionsComponent implements OnInit {
       }
     });
   }
+
   public isDeleting = (id: string): boolean => this.deletingIds().has(id);
-  private addDeleting(id: string) { const s = new Set(this.deletingIds()); s.add(id); this.deletingIds.set(s); }
-  private removeDeleting(id: string) { const s = new Set(this.deletingIds()); s.delete(id); this.deletingIds.set(s); }
+
+  private addDeleting(id: string) {
+    const s = new Set(this.deletingIds());
+    s.add(id);
+    this.deletingIds.set(s);
+  }
+
+  private removeDeleting(id: string) {
+    const s = new Set(this.deletingIds());
+    s.delete(id);
+    this.deletingIds.set(s);
+  }
 
   /** ========== Delete ALL ========== */
   deleteAllTransactions(): void {
@@ -206,11 +239,18 @@ export class TransactionsComponent implements OnInit {
     });
   }
 
-  /** ===== Budgets (now functional like Dashboard) ===== */
-  openBudget(): void { this.showBudget = true; this.lockScroll(true); }
-  closeBudget(): void { this.showBudget = false; this.lockScroll(false); }
+  /** ===== Budgets modal ===== */
+  openBudget(): void {
+    this.showBudget = true;
+    this.lockScroll(true);
+  }
 
-  /** ===== (Form helpers kept) ===== */
+  closeBudget(): void {
+    this.showBudget = false;
+    this.lockScroll(false);
+  }
+
+  /** ===== Add form toggle ===== */
   toggleAddForm(): void {
     this.showAddForm.set(!this.showAddForm());
     if (!this.showAddForm()) {
@@ -222,7 +262,7 @@ export class TransactionsComponent implements OnInit {
     }
   }
 
-  getFilteredCategories(): Array<{type: string, name: string, value: string}> {
+  getFilteredCategories(): Array<{ type: string; name: string; value: string }> {
     const selectedType = this.transactionForm.get('type')?.value;
     return this.categories.filter(cat => cat.type === selectedType);
   }
@@ -231,7 +271,7 @@ export class TransactionsComponent implements OnInit {
     this.transactionForm.get('category')?.setValue('');
   }
 
-  /** ===== Template helpers (arrow functions so template type-check sees them) ===== */
+  /** ===== Template helpers ===== */
   public getTransactionTypeClass = (type: string): string =>
     type === 'income' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
 
@@ -248,10 +288,16 @@ export class TransactionsComponent implements OnInit {
   public getFieldError = (fieldName: string): string | null => {
     const field = this.transactionForm.get(fieldName);
     if (field?.errors && (field.touched || field.dirty)) {
-      if (field.errors['required']) return `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} is required`;
+      if (field.errors['required']) {
+        return `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} is required`;
+      }
       if (field.errors['min']) return 'Amount must be greater than 0';
-      if (field.errors['minlength']) return `Minimum length is ${field.errors['minlength'].requiredLength}`;
-      if (field.errors['maxlength']) return `Maximum length is ${field.errors['maxlength'].requiredLength}`;
+      if (field.errors['minlength']) {
+        return `Minimum length is ${field.errors['minlength'].requiredLength}`;
+      }
+      if (field.errors['maxlength']) {
+        return `Maximum length is ${field.errors['maxlength'].requiredLength}`;
+      }
     }
     return null;
   };
