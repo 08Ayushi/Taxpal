@@ -1,0 +1,727 @@
+/* ================== Host Layout ================== */
+:host {
+  display: flex;
+  width: 100%;
+  height: 100vh; /* full viewport; we control scroll inside for desktop */
+  background: #fbfbfb;
+  font-family: Arial, sans-serif;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* ================== Sidebar ================== */
+.sidebar {
+  width: 250px;
+  background: #fbfbfb;
+  color: #25295a;
+  height: 100%;
+  padding: 15px 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.sidebar h1 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #25295a;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.menu a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #25295a;
+  padding: 10px 15px;
+  text-decoration: none;
+  font-size: 16px;
+  border-radius: 8px;
+}
+
+.menu a:hover {
+  background: #534ca4;
+  color: #fbfbfb;
+}
+
+.menu a .nav-ic {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: currentColor;
+}
+
+/* Profile */
+.profile {
+  margin-top: auto;
+  padding: 12px 12px 8px;
+  border-top: 1px solid #ebefff;
+  background: #ebefff;
+  border-radius: 10px;
+  margin: 12px;
+}
+
+.profile-top {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fbfbfb;
+  background: #656ed3;
+  letter-spacing: 0.5px;
+}
+
+.who .name {
+  font-weight: 700;
+  color: #25295a;
+  line-height: 1.2;
+}
+
+.who .email {
+  font-size: 12px;
+  color: #1a1a1a;
+  opacity: 0.7;
+  margin-top: 2px;
+  word-break: break-all;
+}
+
+.profile-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  padding: 10px 2px 2px;
+  margin-top: 6px;
+}
+
+.profile-actions .action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  font-size: 14px;
+  color: #25295a;
+  padding: 4px 2px;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.profile-actions .action:hover {
+  background: #afb3ff;
+  color: #25295a;
+}
+
+.profile-actions .action svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ================== Drawer Overlay ================== */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(1px);
+  z-index: 2000;
+  display: none;
+}
+
+.drawer-overlay.open {
+  display: block;
+}
+
+.close-mobile {
+  display: none;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #afb3ff;
+  background: #fbfbfb;
+  color: #25295a;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+/* ================== Main Area (RHS Canvas) ================== */
+.auto-main {
+  flex: 1;
+  background: #ebefff;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;            /* even padding from all four sides */
+  overflow: hidden;         /* desktop: page locked, inner canvases scroll */
+  box-sizing: border-box;
+}
+
+/* Sticky header inside RHS */
+.auto-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  background: #ebefff;
+  border-bottom: 1px solid #afb3ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 8px 0 12px;
+}
+
+/* Title + subtitle: subtitle below title */
+.auto-top-bar {
+  display: flex;
+  align-items: center;
+}
+
+.hamburger {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #afb3ff;
+  border-radius: 8px;
+  background: #656ed3;
+  color: #fbfbfb;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.auto-page-header {
+  display: flex;
+  /* flex-wrap: wrap;          subtitle under title */
+  align-items: flex-start;
+  gap: 4px 10px;
+  padding-right: 15px;
+  position: relative;
+}
+
+.auto-page-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  color: #25295a;
+  flex-basis: 100%;         /* full-width row */
+}
+
+.auto-page-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #1a1a1a;
+  opacity: 0.75;
+}
+
+.auto-header-close {
+  margin-left: auto;
+  align-self: flex-start;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #afb3ff;
+  background: #fbfbfb;
+  color: #25295a;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.auto-header-close:hover {
+  background: #656ed3;
+  color: #fbfbfb;
+}
+
+/* ================== Content Section ================== */
+.auto-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;            /* allow internal grids to shrink & scroll */
+}
+
+/* Loading / error banners */
+.loading-banner,
+.error-banner {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.loading-banner {
+  background: #ebefff;
+  color: #25295a;
+}
+
+.error-banner {
+  background: #ffe5e5;
+  color: #b3261e;
+}
+
+/* ================== Top Metric Cards ================== */
+.auto-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.auto-card {
+  background: #fbfbfb;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-card-label {
+  font-size: 13px;
+  color: #1a1a1a;
+  opacity: 0.7;
+}
+
+.auto-card-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #25295a;
+}
+
+.auto-card-negative {
+  color: #534ca4;
+}
+
+.auto-card-desc {
+  font-size: 11px;
+  color: #1a1a1a;
+  opacity: 0.65;
+}
+
+/* ================== Bottom Grid (Scrollable Cards) ================== */
+.auto-bottom-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.4fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: 0;            /* key so children can scroll */
+}
+
+/* Each card acts as its own scrollable canvas on desktop */
+.breakdown-card,
+.calendar-card {
+  background: #fbfbfb;
+  border-radius: 16px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* ================== Breakdown Content ================== */
+.breakdown-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #25295a;
+  flex-shrink: 0;
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 14px;
+  color: #1a1a1a;
+  flex-shrink: 0;
+}
+
+.breakdown-row.highlight {
+  margin-top: 2px;
+  border-top: 1px solid #ebefff;
+  padding-top: 8px;
+  font-weight: 700;
+  color: #25295a;
+}
+
+.breakdown-label {
+  flex: 1;
+}
+
+.breakdown-value {
+  font-weight: 600;
+}
+
+.breakdown-value.negative {
+  color: #534ca4;
+}
+
+/* Info banners */
+.info-banner {
+  margin-top: 10px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.info-banner.success {
+  background: #ebefff;
+  color: #25295a;
+  border: 1px solid #afb3ff;
+}
+
+.info-banner.warning {
+  background: #fbfbfb;
+  color: #1a1a1a;
+  border: 1px solid #534ca4;
+}
+
+.icon-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #656ed3;
+  margin-top: 3px;
+}
+
+.info-text {
+  flex: 1;
+}
+
+/* Slab breakdown table */
+.slab-table {
+  margin-top: 10px;
+  border-top: 1px solid #ebefff;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.slab-header,
+.slab-row,
+.slab-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slab-header span {
+  font-weight: 600;
+  color: #25295a;
+}
+
+.slab-label {
+  color: #1a1a1a;
+}
+
+.slab-tax {
+  font-weight: 600;
+  color: #25295a;
+}
+
+.slab-total span:first-child {
+  font-weight: 700;
+  color: #25295a;
+}
+
+.slab-total span:last-child {
+  font-weight: 700;
+  color: #534ca4;
+}
+
+/* ================== Calendar Content ================== */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.calendar-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #ebefff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.calendar-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #25295a;
+}
+
+/* Empty calendar */
+.calendar-empty {
+  flex: 1;
+  padding: 16px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.calendar-empty-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 2px solid #ebefff;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.calendar-empty-icon::before,
+.calendar-empty-icon::after {
+  content: "";
+  position: absolute;
+  background: #ebefff;
+  border-radius: 2px;
+}
+
+.calendar-empty-icon::before {
+  top: 8px;
+  left: 6px;
+  right: 6px;
+  height: 4px;
+}
+
+.calendar-empty-icon::after {
+  top: 16px;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+}
+
+.calendar-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #25295a;
+}
+
+.calendar-empty-text {
+  font-size: 12px;
+  color: #1a1a1a;
+  opacity: 0.7;
+}
+
+/* Schedule list + mark-as-paid */
+.calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.calendar-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #ebefff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calendar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #25295a;
+}
+
+.calendar-period {
+  font-size: 11px;
+  color: #1a1a1a;
+  opacity: 0.8;
+}
+
+.calendar-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: #25295a;
+}
+
+.calendar-due {
+  font-size: 11px;
+  color: #534ca4;
+}
+
+.calendar-paid-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #656ed3;
+  background: #fbfbfb;
+  color: #25295a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.calendar-paid-btn:hover {
+  background: #656ed3;
+  color: #fbfbfb;
+}
+
+/* ================== Budgets Modal ================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(1px);
+  z-index: 3000;
+}
+
+.modal-shell {
+  position: fixed;
+  inset: 0;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3005;
+}
+
+.modal-content {
+  width: min(96vw, 880px);
+  max-height: 88vh;
+  background: #fbfbfb;
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-scroll {
+  padding: 20px;
+  overflow: auto;
+  max-height: 88vh;
+}
+
+/* ================== Responsive ================== */
+
+/* Tablets / small laptops */
+@media (max-width: 1024px) {
+  /* Allow normal page scrolling on smaller screens */
+  :host {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .hamburger {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 2001;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .close-mobile {
+    display: block;
+  }
+
+  .auto-main {
+    padding: 16px;
+    overflow: visible;          /* page scroll instead of inner lock */
+  }
+
+  .auto-section {
+    min-height: auto;
+  }
+
+  .auto-bottom-grid {
+    min-height: auto;
+    grid-template-columns: 1fr; /* stack if needed */
+  }
+
+  /* Cards grow; no inner scroll trap on mobile/tablet */
+  .breakdown-card,
+  .calendar-card {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* Narrow tablets / phablets */
+@media (max-width: 900px) {
+  .auto-page-title {
+    font-size: 22px;
+  }
+
+  .auto-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Phones */
+@media (max-width: 640px) {
+  .auto-main {
+    padding: 12px;
+  }
+
+  .auto-section {
+    gap: 14px;
+  }
+
+  .auto-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auto-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
