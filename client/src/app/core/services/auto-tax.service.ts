@@ -1,20 +1,21 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 export interface TaxSlabLine {
   from: number;
   to: number | null;
-  rate: number;           // 0.05 => 5%
+  rate: number;
   taxablePortion: number;
   tax: number;
 }
 
 export interface TaxScheduleItem {
   id: string;
-  label: string;          // e.g. "Q1 2025"
-  period: string;         // e.g. "Apr - Jun 2025"
-  dueDate: string;        // ISO string from backend
+  label: string;
+  period: string;
+  dueDate: string;
   amount: number;
 }
 
@@ -32,8 +33,7 @@ export interface AutoTaxSummary {
 
 @Injectable({ providedIn: 'root' })
 export class AutoTaxService {
-  // Use the same pattern as your other services
-  private readonly BASE = `/api/v1/tax/auto`;
+  private readonly BASE = `${environment.API_URL}/api/v1/tax/auto`;
 
   constructor(private http: HttpClient) {}
 
