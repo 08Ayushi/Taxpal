@@ -122,7 +122,6 @@
     <h1><strong>Transactions</strong></h1>
 
     <div>
-      <!-- <a routerLink="/dashboard" class="btn btn-outline">Back to Dashboard</a> -->
       <button
         class="btn btn-danger"
         [disabled]="isDeletingAll() || isLoading() || !transactions().length"
@@ -194,10 +193,15 @@
           <div class="transaction-content">
             <h4 class="transaction-category">{{ formatCategory(transaction.category) }}</h4>
             <p class="transaction-amount" [ngClass]="transaction.type === 'income' ? 'text-green-600' : 'text-red-600'">
-              {{ transaction.type === 'income' ? '+' : '-' }}${{ transaction.amount.toFixed(2) }}
+              {{ transaction.type === 'income' ? '+' : '-' }}
+              {{ transaction.amount | currency: currencyService.code:'symbol':'1.2-2' }}
             </p>
-            <p *ngIf="transaction.description" class="transaction-description">{{ transaction.description }}</p>
-            <p class="transaction-date">{{ transaction.date | date:'MMM d, y' }}</p>
+            <p *ngIf="transaction.description" class="transaction-description">
+              {{ transaction.description }}
+            </p>
+            <p class="transaction-date">
+              {{ transaction.date | date:'MMM d, y' }}
+            </p>
           </div>
         </div>
       </div>
