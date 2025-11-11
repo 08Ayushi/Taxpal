@@ -1,10 +1,9 @@
-// src/app/core/services/auth.service.ts
 import { Injectable, Inject, PLATFORM_ID } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 import { isPlatformBrowser } from '@angular/common';
-import { environment } from 'src/environments/environment';
+import { CurrencyService, CurrencyCode } from './currency.service'; // ✅ import CurrencyCode
 
 export interface User {
   id: string;
@@ -12,6 +11,7 @@ export interface User {
   email: string;
   country?: string;
   income_bracket?: 'low' | 'middle' | 'high';
+  currency?: CurrencyCode; // ✅ strongly typed to match CurrencyService
 }
 
 export interface AuthResponse {
@@ -20,27 +20,24 @@ export interface AuthResponse {
   user: User;
 }
 
-export interface LoginRequest { email: string; password: string; }
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
 export interface RegisterRequest {
-  name: string; email: string; password: string;
-  country?: string; income_bracket?: 'low' | 'middle' | 'high';
+  name: string;
+  email: string;
+  password: string;
+  country?: string;
+  income_bracket?: 'low' | 'middle' | 'high';
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly TOKEN_KEY = 'token';
-  private readonly USER_KEY  = 'user';
-
-  // Build a clean base:
-  // - production: environment.API_URL MUST be 'https://taxpal-8.onrender.com'
-  // - dev: environment.API_URL can be 'http://localhost:3000'
-  // We append `/api/v1/auth` exactly once here.
-  private readonly BASE = (() => {
-    const root = (environment as any)?.API_URL
-      ? String((environment as any).API_URL).replace(/\/+$/, '')
-      : '';
-    return `${root}/api/v1/auth`;
-  })();
+  private readonly USER_KEY = 'user';
+  private readonly API_URL = '/api/v1/auth';
 
   private tokenSubject = new BehaviorSubject<string | null>(null);
   private currentUserSubject = new BehaviorSubject<User | null>(null);
@@ -52,38 +49,56 @@ export class AuthService {
   constructor(
     private http: HttpClient,
     private router: Router,
+    private currencyService: CurrencyService,
     @Inject(PLATFORM_ID) private platformId: Object
   ) {
     this.loadFromStorage();
   }
 
   // ---------- Auth actions ----------
+
   login(credentials: LoginRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.BASE}/login`, credentials).pipe(
-      tap(res => this.saveAuth(res))
-    );
+    return this.http
+      .post<AuthResponse>(`${this.API_URL}/login`, credentials)
+      .pipe(tap((res) => this.saveAuth(res)));
   }
 
   register(userData: RegisterRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.BASE}/register`, userData).pipe(
-      tap(res => this.saveAuth(res))
-    );
+    return this.http
+      .post<AuthResponse>(`${this.API_URL}/register`, userData)
+      .pipe(tap((res) => this.saveAuth(res)));
   }
 
   forgotPassword(email: string) {
-    return this.http.post<{ message: string }>(`${this.BASE}/forgot-password`, { email });
+    return this.http.post<{ message: string }>(
+      `${this.API_URL}/forgot-password`,
+      { email }
+    );
   }
 
   resetPassword(token: string, password: string) {
-    return this.http.post<AuthResponse>(`${this.BASE}/reset-password`, { token, password })
-      .pipe(tap(res => this.saveAuth(res)));
+    return this.http
+      .post<AuthResponse>(`${this.API_URL}/reset-password`, {
+        token,
+        password,
+      })
+      .pipe(tap((res) => this.saveAuth(res)));
   }
 
-  /** Uses your auth middleware to return the user from token */
-  verifyToken(): Observable<{ user: User }> {
-    return this.http.get<{ user: User }>(`${this.BASE}/me`).pipe(
-      tap(r => this.saveUser(r.user))
-    );
+  /**
+   * Verify token & refresh current user.
+   * Backend /me returns { success, data }.
+   */
+  verifyToken(): Observable<{ success: boolean; data: User }> {
+    return this.http
+      .get<{ success: boolean; data: User }>(`${this.API_URL}/me`)
+      .pipe(
+        tap((res) => {
+          if (res && res.data) {
+            this.saveUser(res.data);
+          }
+        })
+      );
   }
 
   logout(): void {
@@ -93,12 +108,19 @@ export class AuthService {
     }
     this.tokenSubject.next(null);
     this.currentUserSubject.next(null);
+
+    // reset global currency → default (e.g. USD)
+    this.currencyService.setCurrency(undefined, undefined);
+
     this.router.navigate(['/login']);
   }
 
   // ---------- Consumers rely on these ----------
+
   getToken(): string | null {
-    return isPlatformBrowser(this.platformId) ? localStorage.getItem(this.TOKEN_KEY) : null;
+    return isPlatformBrowser(this.platformId)
+      ? localStorage.getItem(this.TOKEN_KEY)
+      : null;
   }
 
   isAuthenticated(): boolean {
@@ -109,33 +131,56 @@ export class AuthService {
     return this.currentUserSubject.value;
   }
 
-  // ---------- Storage helpers ----------
+  // ---------- Internal helpers ----------
+
   private saveAuth(res: AuthResponse) {
     this.setToken(res.token);
     this.saveUser(res.user);
   }
 
   private setToken(token: string) {
-    if (isPlatformBrowser(this.platformId)) localStorage.setItem(this.TOKEN_KEY, token);
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.setItem(this.TOKEN_KEY, token);
+    }
     this.tokenSubject.next(token);
   }
 
   private saveUser(user: User) {
+    if (!user) return;
+
     if (isPlatformBrowser(this.platformId)) {
       localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     }
     this.currentUserSubject.next(user);
+
+    // ✅ currency service expects CurrencyCode | undefined
+    this.currencyService.setCurrency(
+      user.currency ?? undefined,
+      user.country ?? undefined
+    );
   }
 
   private loadFromStorage() {
     if (!isPlatformBrowser(this.platformId)) return;
+
     const token = localStorage.getItem(this.TOKEN_KEY);
     const userStr = localStorage.getItem(this.USER_KEY);
 
     if (token) this.tokenSubject.next(token);
+
     if (userStr) {
-      try { this.currentUserSubject.next(JSON.parse(userStr) as User); }
-      catch { /* corrupted storage */ this.logout(); }
+      try {
+        const user = JSON.parse(userStr) as User;
+        this.currentUserSubject.next(user);
+
+        this.currencyService.setCurrency(
+          user.currency ?? undefined,
+          user.country ?? undefined
+        );
+      } catch {
+        // corrupted storage → clear safely
+        this.logout();
+      }
     }
   }
 }
