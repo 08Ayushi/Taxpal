@@ -8,7 +8,7 @@ import {
   resetValidator,
 } from '../../utils/validators/authValidators';
 import { handleValidation } from '../../utils/validation';
-import { sendResetEmail } from '../../utils/mailer'; // ⬅️ import only this
+import { sendResetEmail } from '../../utils/mailer';
 
 const router = express.Router();
 console.log('[auth routes] loaded');
@@ -27,12 +27,17 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { token, user } = await authService.register(req.body);
-      res.status(201).json({ message: 'User created successfully', token, user });
+      // user now includes currency
+      res
+        .status(201)
+        .json({ message: 'User created successfully', token, user });
     } catch (error: any) {
       if (error?.message === 'USER_EXISTS' || error?.code === 11000) {
         return res.status(400).json({ message: 'User already exists' });
       }
-      res.status(500).json({ message: 'Error creating user', error });
+      res
+        .status(500)
+        .json({ message: 'Error creating user', error: error?.message });
     }
   }
 );
@@ -46,7 +51,10 @@ router.post(
     try {
       const { email, password } = req.body;
       const result = await authService.login(email, password);
-      if (!result) return res.status(400).json({ message: 'Invalid credentials' });
+      if (!result) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      // result.user includes currency
       res.json({ message: 'Login successful', ...result });
     } catch {
       res.status(500).json({ message: 'Login failed' });
@@ -57,59 +65,107 @@ router.post(
 // ========= PROFILE: ME =========
 
 // GET /api/v1/auth/me
-router.get('/me', authenticateToken, async (req: AuthedRequest, res: Response) => {
-  if (!req.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+router.get(
+  '/me',
+  authenticateToken,
+  async (req: AuthedRequest, res: Response) => {
+    if (!req.user) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'Unauthorized' });
+    }
 
-  try {
-    const id = String(req.user._id ?? req.user.id ?? req.user.userId);
-    const me = await authService.getPublicById(id);
-    if (!me) return res.status(404).json({ success: false, message: 'User not found' });
-    res.json({ success: true, data: me });
-  } catch (e: any) {
-    res.status(500).json({ success: false, message: e?.message || 'Failed to load profile' });
+    try {
+      const id = String(
+        req.user._id ?? req.user.id ?? req.user.userId
+      );
+      const me = await authService.getPublicById(id);
+      if (!me) {
+        return res
+          .status(404)
+          .json({ success: false, message: 'User not found' });
+      }
+      res.json({ success: true, data: me });
+    } catch (e: any) {
+      res.status(500).json({
+        success: false,
+        message: e?.message || 'Failed to load profile',
+      });
+    }
   }
-});
+);
 
 // PUT /api/v1/auth/me
-router.put('/me', authenticateToken, async (req: AuthedRequest, res: Response) => {
-  if (!req.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+router.put(
+  '/me',
+  authenticateToken,
+  async (req: AuthedRequest, res: Response) => {
+    if (!req.user) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'Unauthorized' });
+    }
 
-  try {
-    const id = String(req.user._id ?? req.user.id ?? req.user.userId);
-    const { name, email, country, income_bracket } = req.body || {};
-    const updated = await authService.updateProfile(id, { name, email, country, income_bracket });
-    res.json({ success: true, data: updated });
-  } catch (e: any) {
-    res.status(400).json({ success: false, message: e?.message || 'Update failed' });
+    try {
+      const id = String(
+        req.user._id ?? req.user.id ?? req.user.userId
+      );
+      const { name, email, country, income_bracket } = req.body || {};
+      const updated = await authService.updateProfile(id, {
+        name,
+        email,
+        country,
+        income_bracket,
+      });
+      // updated includes currency consistent with country
+      res.json({ success: true, data: updated });
+    } catch (e: any) {
+      res.status(400).json({
+        success: false,
+        message: e?.message || 'Update failed',
+      });
+    }
   }
-});
+);
 
 // ========= PASSWORD RESET FLOW =========
 
-// FORGOT PASSWORD (fire-and-forget to avoid timeouts/502s)
-router.post('/forgot-password', forgotValidator, handleValidation, async (req: Request, res: Response) => {
-  const { email } = req.body;
-
-  try {
+// FORGOT PASSWORD
+router.post(
+  '/forgot-password',
+  forgotValidator,
+  handleValidation,
+  async (req: Request, res: Response) => {
+    const { email } = req.body;
     const result = await authService.issueResetToken(email);
 
-    if (result) {
-      const base = process.env.CLIENT_URL || 'http://localhost:4200';
-      const resetUrl = `${base}/reset-password?token=${encodeURIComponent(result.resetToken)}`;
-      console.log('[reset-url]', resetUrl);
+    // Always respond generically
+    if (!result) {
+      return res.json({
+        message: 'If that email exists, we sent a reset link.',
+      });
+    }
 
-      // Fire-and-forget: don't await; log errors but return immediately
-      sendResetEmail(email, resetUrl).catch(err =>
-        console.warn('[mailer] async send skipped:', err?.message || err)
+    const { resetToken } = result;
+    const resetUrl = `${
+      process.env.CLIENT_URL || 'http://localhost:4200'
+    }/reset-password?token=${resetToken}`;
+    console.log('[reset-url]', resetUrl);
+
+    try {
+      await sendResetEmail(email, resetUrl);
+    } catch (e) {
+      console.warn(
+        '[mailer] failed to send email in dev:',
+        (e as any)?.message || e
       );
     }
-  } catch (e: any) {
-    console.warn('[forgotPassword] error:', e?.message || e);
-    // Fall through to generic response
-  }
 
-  return res.json({ message: 'If that email exists, we sent a reset link.' });
-});
+    res.json({
+      message: 'If that email exists, we sent a reset link.',
+    });
+  }
+);
 
 // RESET PASSWORD
 router.post(
@@ -119,7 +175,11 @@ router.post(
   async (req: Request, res: Response) => {
     const { token, password } = req.body;
     const result = await authService.resetPassword(token, password);
-    if (!result) return res.status(400).json({ message: 'Invalid or expired reset token' });
+    if (!result) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid or expired reset token' });
+    }
 
     res.json({
       message: 'Password updated successfully',
