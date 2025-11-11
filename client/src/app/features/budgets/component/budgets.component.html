@@ -7,7 +7,6 @@
           <button class="icon-btn" type="button" aria-label="Close" (click)="goBack()">×</button>
         </div>
 
-        <!-- Bind to Angular form -->
         <form class="budget-form" [formGroup]="form" (ngSubmit)="onSubmit()" autocomplete="off">
           <!-- Row 1: Category & Amount -->
           <div class="grid grid-2">
@@ -16,11 +15,20 @@
               <div class="select-wrap" [class.invalid]="isInvalid('category')">
                 <select id="category" class="input" formControlName="category">
                   <option value="" disabled>Select a category</option>
-                  <option *ngFor="let c of categories; trackBy: trackByCategory" [value]="c">{{ c }}</option>
+                  <option
+                    *ngFor="let c of categories; trackBy: trackByCategory"
+                    [value]="c">
+                    {{ c }}
+                  </option>
                 </select>
                 <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none"
-                        stroke-linecap="round" stroke-linejoin="round"/>
+                  <path
+                    d="M6 9l6 6 6-6"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
                 </svg>
               </div>
               <small class="error" *ngIf="isInvalid('category')">Please choose a category.</small>
@@ -29,7 +37,7 @@
             <div class="form-group">
               <label for="amount">Budget Amount</label>
               <div class="currency-wrap" [class.invalid]="isInvalid('amount')">
-                <span class="currency-prefix">$</span>
+                <span class="currency-prefix">{{ currencySymbol }}</span>
                 <input
                   id="amount"
                   type="number"
