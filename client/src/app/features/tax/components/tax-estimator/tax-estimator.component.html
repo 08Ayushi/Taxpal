@@ -116,8 +116,6 @@
           (click)="switchTab('summary')">
           Summary
         </button>
-
-        <!-- <a class="btn-back" [routerLink]="['/dashboard']" style="text-align: center;">Back to Dashboard</a> -->
       </div>
     </div>
   </div>
@@ -196,7 +194,7 @@
           <div class="form-group">
             <label>Gross Income for Quarter</label>
             <div class="currency-wrap">
-              <span class="currency-prefix">$</span>
+              <span class="currency-prefix">{{ currencyService.symbol }}</span>
               <input
                 class="input pl-currency"
                 formControlName="grossIncome"
@@ -217,7 +215,7 @@
           <div class="form-group">
             <label>Business Expenses</label>
             <div class="currency-wrap">
-              <span class="currency-prefix">$</span>
+              <span class="currency-prefix">{{ currencyService.symbol }}</span>
               <input
                 class="input pl-currency"
                 formControlName="businessExpenses"
@@ -235,7 +233,7 @@
           <div class="form-group">
             <label>Retirement Contributions</label>
             <div class="currency-wrap">
-              <span class="currency-prefix">$</span>
+              <span class="currency-prefix">{{ currencyService.symbol }}</span>
               <input
                 class="input pl-currency"
                 formControlName="retirement"
@@ -255,7 +253,7 @@
           <div class="form-group">
             <label>Health Insurance Premiums</label>
             <div class="currency-wrap">
-              <span class="currency-prefix">$</span>
+              <span class="currency-prefix">{{ currencyService.symbol }}</span>
               <input
                 class="input pl-currency"
                 formControlName="health"
@@ -273,7 +271,7 @@
           <div class="form-group">
             <label>Home Office Deduction</label>
             <div class="currency-wrap">
-              <span class="currency-prefix">$</span>
+              <span class="currency-prefix">{{ currencyService.symbol }}</span>
               <input
                 class="input pl-currency"
                 formControlName="homeOffice"
