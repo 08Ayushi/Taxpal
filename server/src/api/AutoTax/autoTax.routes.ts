@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { authenticateToken } from '../auth/auth';
 import { getAutoTaxSummary, markReminderPaid } from './autoTax.controller';
 
-const r = Router();
+export const autoTaxRouter = Router();
 
-r.use(authenticateToken);
+// Protect all auto-tax routes
+autoTaxRouter.use(authenticateToken);
 
-r.get('/summary', getAutoTaxSummary);
-r.patch('/reminders/:id/mark-paid', markReminderPaid);
+// GET /api/v1/tax/auto/summary
+autoTaxRouter.get('/summary', getAutoTaxSummary);
 
-export default r;
+// PATCH /api/v1/tax/auto/reminders/:id/mark-paid
+autoTaxRouter.patch('/reminders/:id/mark-paid', markReminderPaid);
