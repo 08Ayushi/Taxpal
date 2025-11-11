@@ -21,24 +21,25 @@ export class FinancialReportsComponent implements OnInit {
   private router = inject(Router);
   private location = inject(Location);
   private reportsSvc = inject(FinancialReportService);
-  public  auth = inject(AuthService);
+  public auth = inject(AuthService);
 
-  // Drawer state (same as dashboard)
+  // Drawer state
   mobileNavOpen = false;
   showBudget = false;
 
-  // User (for profile block)
+  // User for sidebar
   user: User | null = null;
 
-  // UI model
+  // Report form model
   reportType: 'income-statement' | 'balance-sheet' | 'cash-flow' = 'income-statement';
   period: 'current-month' | 'last-month' | 'this-quarter' | 'this-year' = 'current-month';
   format: 'pdf' | 'csv' | 'xlsx' = 'pdf';
 
-  // flags
+  // Flags
   loadingList = false;
   generating = false;
 
+  // Data
   recent: FinancialReport[] = [];
   errorMsg = '';
 
@@ -47,25 +48,47 @@ export class FinancialReportsComponent implements OnInit {
     this.user = this.auth.getCurrentUser();
   }
 
-  ngOnInit(): void { this.fetchRecent(); }
+  ngOnInit(): void {
+    this.fetchRecent();
+  }
 
-  /* ============ Drawer helpers (copied from dashboard) ============ */
-  toggleMobileNav(): void { this.mobileNavOpen = !this.mobileNavOpen; this.lockScroll(this.mobileNavOpen); }
-  closeMobileNav(): void  { this.mobileNavOpen = false; this.lockScroll(false); }
-  closeMobileNavIfSmall(): void { if (window.innerWidth <= 1024) this.closeMobileNav(); }
-  private lockScroll(lock: boolean) { try { document.body.style.overflow = lock ? 'hidden' : ''; } catch {} }
+  /* ============ Drawer helpers ============ */
+  toggleMobileNav(): void {
+    this.mobileNavOpen = !this.mobileNavOpen;
+    this.lockScroll(this.mobileNavOpen);
+  }
+
+  closeMobileNav(): void {
+    this.mobileNavOpen = false;
+    this.lockScroll(false);
+  }
+
+  closeMobileNavIfSmall(): void {
+    if (window.innerWidth <= 1024) this.closeMobileNav();
+  }
+
+  private lockScroll(lock: boolean) {
+    try {
+      document.body.style.overflow = lock ? 'hidden' : '';
+    } catch {}
+  }
 
   @HostListener('document:keydown', ['$event'])
-  onKeydown(e: KeyboardEvent) { if (e.key === 'Escape' && this.mobileNavOpen) this.closeMobileNav(); }
+  onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && this.mobileNavOpen) this.closeMobileNav();
+  }
 
   @HostListener('window:resize')
-  onResize() { if (window.innerWidth > 1024 && this.mobileNavOpen) this.closeMobileNav(); }
+  onResize() {
+    if (window.innerWidth > 1024 && this.mobileNavOpen) this.closeMobileNav();
+  }
 
   /* ============ Profile initials ============ */
   get firstInitial(): string {
     const s = (this.user?.name || this.user?.email || 'U').trim();
     return s ? s[0].toUpperCase() : 'U';
   }
+
   get secondInitial(): string {
     const n = this.user?.name?.trim();
     if (!n) return '';
@@ -94,13 +117,20 @@ export class FinancialReportsComponent implements OnInit {
   fetchRecent() {
     this.loadingList = true;
     this.reportsSvc.listReports().subscribe({
-      next: (res) => { this.recent = res || []; this.loadingList = false; },
-      error: (e) => { this.errorMsg = e?.error?.message || 'Failed to load reports'; this.loadingList = false; },
+      next: (res) => {
+        this.recent = res || [];
+        this.loadingList = false;
+      },
+      error: (e) => {
+        this.errorMsg = e?.error?.message || 'Failed to load reports';
+        this.loadingList = false;
+      },
     });
   }
 
   generateReport() {
     this.generating = true;
+
     const payload: CreateFinancialReportDto = {
       reportType: this.reportType,
       period: this.period,
@@ -139,9 +169,12 @@ export class FinancialReportsComponent implements OnInit {
 
   deleteReport(r: FinancialReport) {
     if (!confirm('Delete this report entry?')) return;
+
     this.reportsSvc.deleteReport(r._id!).subscribe({
       next: () => this.fetchRecent(),
-      error: (e) => (this.errorMsg = e?.error?.message || 'Delete failed'),
+      error: (e) => {
+        this.errorMsg = e?.error?.message || 'Delete failed';
+      },
     });
   }
 }
