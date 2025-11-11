@@ -1,11 +1,12 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule, HttpErrorResponse } from '@angular/common/http';
-import { FormsModule } from '@angular/forms';                 // ✅ add
+import { FormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { BudgetsComponent } from './budgets.component';
 import { BudgetService, BudgetDTO } from '../../../core/services/budget.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
   selector: 'app-budgets-list',
@@ -13,7 +14,7 @@ import { BudgetService, BudgetDTO } from '../../../core/services/budget.service'
   imports: [
     CommonModule,
     HttpClientModule,
-    FormsModule,                 // ✅ add to imports so [(ngModel)] works
+    FormsModule,
     MatSnackBarModule,
     BudgetsComponent
   ],
@@ -33,9 +34,18 @@ export class BudgetsListComponent implements OnInit {
   month = '';     // 'YYYY-MM'
   category = '';
 
+  // Display currency symbol (based on user country; defaults to $)
+  currencySymbol = '$';
+
   private reloadTick = signal(0);
 
-  constructor(private api: BudgetService, private snack: MatSnackBar) {}
+  constructor(
+    private api: BudgetService,
+    private snack: MatSnackBar,
+    private auth: AuthService
+  ) {
+    this.currencySymbol = this.resolveCurrencySymbol();
+  }
 
   ngOnInit(): void {
     this.fetch();
@@ -43,28 +53,27 @@ export class BudgetsListComponent implements OnInit {
 
   fetch(): void {
     this.loading = true;
-    this.api
-      .list({
-        month: this.month || undefined,
-        category: this.category || undefined,
-        limit: this.limit,
-        skip: this.skip,
-      })
-      .subscribe({
-        next: (data) => {
-          this.rows = Array.isArray(data) ? data : [];
-          this.total = this.rows.length;
-          this.loading = false;
-        },
-        error: (e: HttpErrorResponse) => {
-          this.loading = false;
-          console.error('[budgets:list] failed', e);
-          this.snack.open('Failed to load budgets', 'Dismiss', {
-            duration: 3000,
-            panelClass: ['snack-error'],
-          });
-        },
-      });
+    this.api.list({
+      month: this.month || undefined,
+      category: this.category || undefined,
+      limit: this.limit,
+      skip: this.skip,
+    })
+    .subscribe({
+      next: (data) => {
+        this.rows = Array.isArray(data) ? data : [];
+        this.total = this.rows.length;
+        this.loading = false;
+      },
+      error: (e: HttpErrorResponse) => {
+        this.loading = false;
+        console.error('[budgets:list] failed', e);
+        this.snack.open('Failed to load budgets', 'Dismiss', {
+          duration: 3000,
+          panelClass: ['snack-error'],
+        });
+      },
+    });
   }
 
   openForm(): void {
@@ -106,6 +115,57 @@ export class BudgetsListComponent implements OnInit {
     });
   }
 
-  // ✅ use a method for trackBy
   trackById = (_: number, r: BudgetDTO) => r?._id;
+
+  /** Determine currency symbol from the authenticated user's country. */
+  private resolveCurrencySymbol(): string {
+    try {
+      const user = this.auth.getCurrentUser?.() ?? null;
+      const country = (user?.country || '').toString().trim().toLowerCase();
+
+      switch (country) {
+        case 'india':
+        case 'in':
+          return '₹';
+        case 'united kingdom':
+        case 'uk':
+        case 'gb':
+        case 'great britain':
+          return '£';
+        case 'eurozone':
+        case 'de':
+        case 'fr':
+        case 'es':
+        case 'it':
+        case 'ie':
+        case 'nl':
+        case 'be':
+        case 'pt':
+        case 'fi':
+        case 'at':
+        case 'gr':
+        case 'lu':
+        case 'si':
+        case 'sk':
+        case 'lv':
+        case 'lt':
+        case 'ee':
+        case 'cy':
+          return '€';
+        case 'canada':
+        case 'ca':
+          return 'CA$';
+        case 'australia':
+        case 'au':
+          return 'A$';
+        case 'new zealand':
+        case 'nz':
+          return 'NZ$';
+        default:
+          return '$';
+      }
+    } catch {
+      return '$';
+    }
+  }
 }
