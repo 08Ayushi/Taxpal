@@ -2,9 +2,9 @@
 <div
   class="drawer-overlay"
   *ngIf="mobileNavOpen"
-  (click)="closeMobileNav()"
-  [class.open]="mobileNavOpen">
-</div>
+  (click)="closeMobileNav()
+"
+  [class.open]="mobileNavOpen"></div>
 
 <!-- Sidebar (acts as off-canvas on small screens) -->
 <div class="sidebar" [class.open]="mobileNavOpen" role="navigation" aria-label="Primary">
@@ -90,7 +90,7 @@
 
 <!-- Main (NOTE: add modal-open class binding) -->
 <div class="main" [class.modal-open]="showBudget">
-  <!-- Top bar (now sticky) -->
+  <!-- Top bar -->
   <div class="top-bar top-bar--sticky">
     <button type="button" class="hamburger" aria-label="Open menu" (click)="toggleMobileNav()">☰</button>
     <h1><strong>Dashboard</strong></h1>
@@ -114,17 +114,17 @@
   <div class="cards">
     <div class="card">
       <h3>Monthly Income</h3>
-      <p>${{ cards.income.amount | number : '1.0-2' }}</p>
+      <p>{{ cards.income.amount | currency: currencyService.code:'symbol':'1.0-2' }}</p>
       <p>{{ cards.income.changePct | number : '1.0-2' }}% from last month</p>
     </div>
     <div class="card">
       <h3>Monthly Expenses</h3>
-      <p>${{ cards.expenses.amount | number : '1.0-2' }}</p>
+      <p>{{ cards.expenses.amount | currency: currencyService.code:'symbol':'1.0-2' }}</p>
       <p>{{ cards.expenses.changePct | number : '1.0-2' }}% from last month</p>
     </div>
     <div class="card">
       <h3>Estimated Tax Dues</h3>
-      <p>${{ cards.estimatedTaxDues | number : '1.0-2' }}</p>
+      <p>{{ cards.estimatedTaxDues | currency: currencyService.code:'symbol':'1.0-2' }}</p>
       <p>No upcoming taxes</p>
     </div>
     <div class="card">
@@ -149,7 +149,7 @@
         <canvas id="pieChart"></canvas>
       </div>
       <div class="chart-note" *ngIf="!expenses.length && !pieHasData">
-        <p><b>No expenses yet</b> </p>
+        <p><b>No expenses yet</b></p>
       </div>
     </div>
   </div>
@@ -196,8 +196,12 @@
             <td>{{ tx.description }}</td>
             <td>{{ tx.category }}</td>
             <td class="text-right" [ngClass]="tx.type === 'income' ? 'amt-green' : 'amt-red'">
-              <ng-container *ngIf="tx.type === 'income'">+ ${{ tx.amount | number : '1.2-2' }}</ng-container>
-              <ng-container *ngIf="tx.type === 'expense'">- ${{ tx.amount | number : '1.2-2' }}</ng-container>
+              <ng-container *ngIf="tx.type === 'income'">
+                + {{ tx.amount | currency: currencyService.code:'symbol':'1.2-2' }}
+              </ng-container>
+              <ng-container *ngIf="tx.type === 'expense'">
+                - {{ tx.amount | currency: currencyService.code:'symbol':'1.2-2' }}
+              </ng-container>
             </td>
             <td>
               <span class="badge" [ngClass]="tx.type === 'income' ? 'badge-credit' : 'badge-debit'">
