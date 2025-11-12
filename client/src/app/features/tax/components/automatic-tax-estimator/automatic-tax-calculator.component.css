@@ -725,3 +725,55 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Sidebar: scrollable with bottom profile ===== */
+.sidebar{
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;   /* not space-between */
+  min-height:100%;
+  overflow-y:auto;                          /* sidebar scrolls */
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;              /* avoids rubber-band chaining */
+}
+
+/* Links area grows; prevents overflow pushing profile off-screen */
+.menu{
+  flex:1 1 auto;
+  min-height:0;
+}
+
+/* Desktop / large screens: just rest at bottom (not sticky) */
+.profile{
+  margin:12px;                               /* keep your spacing */
+  margin-top:auto !important;                /* pushes to bottom */
+  position:relative;                         /* not sticky on desktop */
+  bottom:auto;
+  background:#F5F6FF;
+  border-top:1px solid #e9e9ef;
+  border-radius:12px;                         /* full radius on desktop */
+  z-index:1;
+}
+
+/* Mobile & tablets: make it sticky at the bottom of the drawer */
+@media (max-width:1024px){
+  .sidebar{
+    position:fixed;                           /* your code already sets this on most pages */
+    top:0; left:0;
+    height:100dvh;                            /* modern mobile viewport */
+    width:280px;                              /* or 300px where used */
+    overflow-y:auto;                           /* ensure drawer scrolls */
+    padding-bottom:max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .profile{
+    position:sticky;
+    bottom:0;
+    margin:0;                                  /* fill the drawer width */
+    border-radius:12px 12px 0 0;               /* nice docked look */
+    padding-bottom:max(10px, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Keep the close button tappable */
+  .close-mobile{ z-index:5; }
+}
