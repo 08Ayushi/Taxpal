@@ -1,149 +1,145 @@
 // server/src/utils/mailer.ts
 import nodemailer from 'nodemailer';
-import SMTPTransport from 'nodemailer/lib/smtp-transport';
-import { Resend } from 'resend';
+import SibApiV3Sdk from 'sib-api-v3-sdk';
 
-type Transport = nodemailer.Transporter | null;
-let transporter: Transport = null;
-let resend: Resend | null = null;
+/** Prefer Brevo v3 API if we have an xkeysib- key; otherwise use SMTP (e.g., Brevo smtp-relay). */
 
-function envBool(v: string | undefined, fallback = false): boolean {
-  if (v === undefined) return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
+const hasBrevoApiKey = () => {
+  const k = (process.env.BREVO_API_KEY || '').trim();
+  return /^xkeysib-/.test(k); // Brevo v3 API keys look like xkeysib-...
+};
+
+function sender() {
+  return {
+    email: process.env.BREVO_SENDER_EMAIL || 'no-reply@taxpal.local',
+    name: process.env.BREVO_SENDER_NAME || 'TaxPal',
+  };
 }
 
-function buildResend(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
-  return new Resend(key);
+async function sendViaBrevoApi(
+  to: string,
+  subject: string,
+  htmlContent: string,
+  textContent: string
+) {
+  const client = SibApiV3Sdk.ApiClient.instance;
+  (client.authentications['api-key'] as any).apiKey = process.env.BREVO_API_KEY!;
+  const api = new SibApiV3Sdk.TransactionalEmailsApi();
+
+  const payload: SibApiV3Sdk.SendSmtpEmail = {
+    sender: sender(),
+    to: [{ email: to }],
+    subject,
+    htmlContent,
+    textContent,
+  };
+
+  return api.sendTransacEmail(payload);
 }
 
-function buildTransport(): Transport {
-  const hasSMTP = !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
-  const hasGmail = !!process.env.GMAIL_USER && !!process.env.GMAIL_APP_PASS;
+async function sendViaSmtp(
+  to: string,
+  subject: string,
+  htmlContent: string,
+  textContent: string
+) {
+  // Works with Brevo’s SMTP relay or any SMTP
+  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure =
+    String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' ||
+    port === 465;
 
-  if (!hasSMTP && !hasGmail) return null;
+  const user = process.env.SMTP_USER; // usually your Brevo account email
+  const pass = process.env.SMTP_PASS; // your Brevo SMTP key (xsmtpsib-...)
 
-  if (hasSMTP) {
-    const port = Number(process.env.SMTP_PORT || 587);
-    const secure = envBool(process.env.SMTP_SECURE, port === 465);
-    const smtpOptions: SMTPTransport.Options = {
-      host: process.env.SMTP_HOST!,
-      port,
-      secure,
-      auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
-    };
-    return nodemailer.createTransport(smtpOptions);
+  if (!user || !pass) {
+    console.warn('[mailer] Missing SMTP_USER/SMTP_PASS; cannot send via SMTP.');
+    return null;
   }
 
-  // Gmail app password (works locally; may time out on some hosts)
-  const gmailOptions: SMTPTransport.Options = {
-    service: 'gmail',
-    auth: { user: process.env.GMAIL_USER!, pass: process.env.GMAIL_APP_PASS! },
-  };
-  return nodemailer.createTransport(gmailOptions);
-}
-
-function getTransport(): Transport {
-  if (transporter) return transporter;
-  transporter = buildTransport();
-  return transporter;
-}
-function getResend(): Resend | null {
-  if (resend) return resend;
-  resend = buildResend();
-  return resend;
-}
-
-function buildMessage(resetUrl: string) {
-  const subject = 'Reset your TaxPal password';
-  const html = `
-    <p>We received a request to reset your password.</p>
-    <p><a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none">Reset password</a></p>
-    <p>Or copy this link into your browser:<br>${resetUrl}</p>
-    <p><small>This link expires in 30 minutes. If you didn’t request this, ignore this email.</small></p>
-  `;
-  const text = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
-  const from =
-    process.env.MAIL_FROM || // e.g. 'TaxPal <onboarding@resend.dev>' or 'TaxPal <noreply@yourdomain.com>'
-    process.env.SMTP_FROM ||
-    process.env.GMAIL_USER ||
-    'TaxPal <onboarding@resend.dev>';
-  return { subject, html, text, from };
-}
-
-// --- send via Resend HTTP ---
-async function tryResend(to: string, resetUrl: string): Promise<boolean> {
-  const r = getResend();
-  if (!r) return false;
-  const { subject, html, text, from } = buildMessage(resetUrl);
-
-  const { data, error } = await r.emails.send({
-    from,
-    to,
-    subject,
-    html,
-    text,
-    // reply_to: process.env.REPLY_TO || undefined,
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
   });
 
-  if (error) throw new Error(error.message || JSON.stringify(error));
-  console.log('[mailer] Resend accepted id:', data?.id);
-  return true;
+  return transport.sendMail({
+    from: `"${sender().name}" <${sender().email}>`,
+    to,
+    subject,
+    html: htmlContent,
+    text: textContent,
+  });
 }
 
-// --- send via SMTP (Gmail/other) ---
-async function trySMTP(to: string, resetUrl: string): Promise<boolean> {
-  const t = getTransport();
-  if (!t) return false;
-  const { subject, html, text, from } = buildMessage(resetUrl);
-  const info = await t.sendMail({ from, to, subject, html, text });
-  console.log('[mailer] SMTP sent id:', info.messageId);
-  const preview = nodemailer.getTestMessageUrl(info);
-  if (preview) console.log('[mailer] preview URL:', preview);
-  return true;
+export async function sendResetEmail(to: string, resetUrl: string): Promise<void> {
+  const subject = 'Reset your TaxPal password';
+  const htmlContent = `
+    <p>We received a request to reset your password.</p>
+    <p>
+      <a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none">
+        Reset password
+      </a>
+    </p>
+    <p>Or copy this link into your browser:<br>${resetUrl}</p>
+    <p><small>This link expires in 30 minutes. If you didn’t request this, you can ignore this email.</small></p>
+  `;
+  const textContent = `Reset your password: ${resetUrl} (expires in 30 minutes)`;
+
+  try {
+    if (hasBrevoApiKey()) {
+      const resp = await sendViaBrevoApi(to, subject, htmlContent, textContent);
+      console.log('[mailer] Brevo API sent:', (resp as any)?.messageId || 'ok');
+      return;
+    }
+
+    const info = await sendViaSmtp(to, subject, htmlContent, textContent);
+    if (info) {
+      console.log('[mailer] SMTP sent:', (info as any)?.messageId || 'ok');
+      return;
+    }
+
+    console.log(`[DEV][sendResetEmail] No mail transport configured. Reset URL for ${to}: ${resetUrl}`);
+  } catch (e: any) {
+    console.error('[mailer] sendResetEmail error:', e?.message || e);
+  }
 }
 
 export async function verifyMailer(): Promise<void> {
-  const hasResend = !!getResend();
-  const t = getTransport();
-
-  if (hasResend) {
-    console.log('[mailer] Resend ready');
-    return;
-  }
-  if (t) {
-    try {
-      await t.verify();
-      console.log('[mailer] SMTP transport verified and ready.');
-    } catch (e: any) {
-      console.warn('[mailer] SMTP verify failed:', e?.message || e);
+  try {
+    if (hasBrevoApiKey()) {
+      const client = SibApiV3Sdk.ApiClient.instance;
+      (client.authentications['api-key'] as any).apiKey = process.env.BREVO_API_KEY!;
+      const account = await new SibApiV3Sdk.AccountApi().getAccount();
+      console.log(
+        `[mailer] Brevo API ready as ${account.email}. Sender: ${sender().name} <${sender().email}>`
+      );
+      return;
     }
-    return;
-  }
-  console.log('[mailer] No mail provider configured — will log reset links (console fallback).');
-}
 
-/**
- * Returns true if an email was actually submitted to a provider (Resend/SMTP).
- * Returns false if we could not submit (console fallback).
- */
-export async function sendResetEmail(to: string, resetUrl: string): Promise<boolean> {
-  try {
-    if (await tryResend(to, resetUrl)) return true;
+    // SMTP verification
+    const host = process.env.SMTP_HOST || '';
+    const user = process.env.SMTP_USER || '';
+    const pass = process.env.SMTP_PASS || '';
+
+    if (host && user && pass) {
+      const port = Number(process.env.SMTP_PORT || 587);
+      const secure =
+        String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' ||
+        port === 465;
+
+      const t = nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
+      await t.verify();
+      console.log(
+        `[mailer] SMTP ready (${host}). Sender: ${sender().name} <${sender().email}>`
+      );
+      return;
+    }
+
+    console.log('[mailer] No Brevo API key or SMTP creds — will log reset links to console.');
   } catch (e: any) {
-    console.warn('[mailer] Resend error:', e?.message || e);
+    console.warn('[mailer] verify failed:', e?.message || e);
   }
-
-  try {
-    if (await trySMTP(to, resetUrl)) return true;
-  } catch (e: any) {
-    console.warn('[mailer] SMTP error:', e?.message || e);
-  }
-
-  console.log(`[DEV][sendResetEmail] No mail sent. Reset URL for ${to}: ${resetUrl}`);
-  return false;
 }
-
-
-
