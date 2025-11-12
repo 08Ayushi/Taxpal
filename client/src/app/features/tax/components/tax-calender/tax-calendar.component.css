@@ -37,10 +37,14 @@
   width:280px;
   background:#FBFBFB;
   color:#25295A;
-  height:100%;
+  /* fix: use dynamic viewport + internal scroll */
+  height:100vh; height:100dvh; height:100svh;
+  max-height:100dvh;
   padding:16px 0;
+  padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px);
   display:flex; flex-direction:column; justify-content:space-between;
   flex-shrink:0; position:relative; border-right:1px solid #EBEFFF;
+  overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
 }
 .sidebar h1{ text-align:center; margin:0 0 20px; color:#25295A; font-size:clamp(24px, 2.4vw, 34px); }
 
@@ -59,10 +63,21 @@
 .avatar{ width:44px; height:44px; border-radius:50%; display:grid; place-items:center; font-weight:700; color:#fff; background:#5c62d6; letter-spacing:.5px; }
 .who .name{ font-weight:700; color:#2d335f; line-height:1.2; }
 .who .email{ font-size:12px; color:#6c6f91; margin-top:2px; word-break:break-all; }
-.profile-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; padding:10px 2px 2px; margin-top:8px; }
+.profile-actions{
+  padding:10px 2px 2px; 
+  margin-top:8px; 
+display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:nowrap;          /* don't wrap */
+  justify-content:space-between;
+}
 .profile-actions .action{
   display:inline-flex; align-items:center; gap:8px; text-decoration:none; font-size:14px; color:#404574; padding:6px 4px;
-  border-radius:10px; transition:background .15s ease, color .15s ease; min-height:40px;
+  border-radius:10px; transition:background .15s ease, color .15s ease; min-height:40px; 
+  flex:1 1 0;                /* same width buttons */
+  white-space:nowrap;        /* keep text on one line */
+  justify-content:center;
 }
 .profile-actions .action:hover{ background:#ECEEFF; color:#2d335f; }
 .profile-actions .action.active{ background:#ECEEFF; color:#2d335f; }
@@ -73,7 +88,7 @@
   flex:1; padding:0 16px 16px; display:flex; flex-direction:column; gap:12px;
   overflow-y:auto; -webkit-overflow-scrolling:touch; background:#EBEFFF; margin-left:0; min-height:0;
   padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px);
-  transition: transform .25s ease;               /* allow slide when drawer opens */
+  transition: transform .25s ease;
   will-change: transform;
 }
 
@@ -81,19 +96,19 @@
 .top-bar{
   position:-webkit-sticky; position:sticky;
   top:0;
-  z-index:1002;                     /* header stays above page content */
+  z-index:1002;
   background:#EBEFFF;
   border-bottom:1px solid #e6e8ff;
   box-shadow:0 2px 8px rgba(0,0,0,.04);
 
   display:grid;
-  grid-template-columns:1fr auto;   /* desktop: title left, actions right */
+  grid-template-columns:1fr auto;
   align-items:center;
   gap:12px;
   padding:12px 0;
 }
 .hamburger{
-  display:none;                     /* shown on ≤1024px */
+  display:none;
   width:40px; height:40px;
   border:1px solid #e6e8ff; border-radius:10px;
   background:#5c62d6; color:#FBFBFB; cursor:pointer;
@@ -118,7 +133,7 @@
   position:fixed; inset:0;
   background:rgba(0,0,0,.35); backdrop-filter:blur(1px);
   display:none; pointer-events:none;
-  z-index:2000;                     /* above header; below sidebar */
+  z-index:2000;
 }
 .drawer-overlay.open{ display:block; pointer-events:auto; }
 
@@ -175,7 +190,7 @@
 
 .recent-empty{ padding:14px; color:#667085; font-size:14px; }
 
-/* ===== Modal (Budgets) — ensure above header, no overlap ===== */
+/* ===== Modal (Budgets) ===== */
 .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:3000; }
 .modal-shell{ position:fixed; inset:0; z-index:3005; display:grid; place-items:center; padding:20px; background:transparent; }
 .modal-content{
@@ -187,6 +202,23 @@
 .modal-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:8px; border-bottom:1px solid #EBEFFF; }
 .close-x{ background:none; border:1px solid #EBEFFF; width:32px; height:32px; border-radius:8px; cursor:pointer; }
 
+/* Automatic Tax Calculator full-screen overlay */
+.auto-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.35);
+  z-index:4000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.auto-overlay-inner{
+  width:100%;
+  height:100%;
+  display:flex;
+  background:transparent;
+}
+
 /* ===================  ≤ 1280px =================== */
 @media (max-width:1280px){
   .calendar__list{ grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
@@ -195,37 +227,32 @@
 /* ===================  ≤ 1024px (Tablets & down) =================== */
 @media (max-width:1024px){
 
-  /* Sidebar becomes drawer (ABOVE header) */
   .hamburger{ display:inline-flex; }
   .sidebar{
-    position:fixed; top:0; left:0; height:100dvh; width:300px;
+    position:fixed; top:0; left:0; height:100vh; height:100dvh; height:100svh; width:300px;
     transform:translateX(-100%); transition:transform .25s ease;
-    z-index:2001;                      /* higher than sticky header */
+    z-index:2001;
     box-shadow:0 20px 50px rgba(0,0,0,.25);
   }
   .sidebar.open{ transform:translateX(0); }
 
-  /* Overlay above header but below sidebar */
   .drawer-overlay{ z-index:2000; }
   .close-mobile{ display:inline-flex; align-items:center; justify-content:center; }
 
-  /* While drawer open, hide the hamburger so it doesn't sit on top */
   .sidebar.open + .main .top-bar .hamburger{
     opacity:0; pointer-events:none;
   }
 
-  /* Slide entire main (header + content) so sidebar doesn't overlap it */
   :host:has(.sidebar.open) .main{
     transform: translateX(300px);
   }
 
-  /* Sticky header: row1 (hamburger+title), row2 (buttons) */
   .top-bar{
     grid-template-columns:44px 1fr;
     grid-template-rows:auto auto;
     gap:12px;
     padding:10px 0;
-    z-index:1002;                      /* below overlay & sidebar */
+    z-index:1002;
   }
   .top-title{
     text-align:left; justify-self:start;
@@ -240,7 +267,7 @@
 
   .main{ padding:0 14px 14px; }
   .form-card{ padding:20px; }
-  .profile-actions{ grid-template-columns:1fr; }
+ .profile-actions{ display:flex; flex-wrap:nowrap; gap:10px; }
 }
 
 /* ===================  ≤ 840px =================== */
@@ -259,7 +286,6 @@
   .menu a{ font-size:14px; padding:10px 14px; }
   .card{ padding:14px; }
 
-  /* Budgets list → vertical cards */
   :host ::ng-deep .budgets-list-host .table-wrap,
   :host ::ng-deep .budgets-list-host .table-responsive{ overflow-x:visible !important; }
 
@@ -281,14 +307,12 @@
 
   :host ::ng-deep .budgets-list-host td{
     display:grid;
-    grid-template-columns:120px 1fr;  /* label | value */
+    grid-template-columns:120px 1fr;
     align-items:start;
     gap:6px 10px;
     padding:10px 4px;
     border:none !important;
     border-bottom:1px dashed #EBEFFF !important;
-    line-height:1.35;
-    word-break:break-word;
   }
   :host ::ng-deep .budgets-list-host td:last-child{
     border-bottom:0 !important;
