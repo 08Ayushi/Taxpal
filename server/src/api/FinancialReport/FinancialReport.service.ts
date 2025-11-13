@@ -1,3 +1,4 @@
+// src/api/FinancialReport/FinancialReport.service.ts
 import FinancialReport, {
   IFinancialReport,
   ReportFormat,
@@ -70,14 +71,21 @@ export async function createReport(
     dateFrom,
     dateTo,
     name: `${friendlyType} — ${label}`,
-    createdBy: createdBy || undefined
+    createdBy: createdBy || undefined  // ✅ will be set to current user
   });
 
   return doc;
 }
 
-export async function listReports(): Promise<IFinancialReport[]> {
-  return FinancialReport.find().sort({ createdAt: -1 }).lean();
+// ✅ now supports per-user filtering
+export async function listReports(userId?: string): Promise<IFinancialReport[]> {
+  const filter: any = {};
+  if (userId) {
+    filter.createdBy = userId;
+  }
+  return FinancialReport.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
 }
 
 export async function getReport(id: string) {
